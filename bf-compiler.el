@@ -4,7 +4,6 @@
 (defun lexer//lex (code)
   (split-string code ""))
 
-
 (defmacro push-instruction (instr)
   `(setq instructions (nconc instructions (list ,instr))))
 
@@ -63,8 +62,6 @@ The steps are as follows:
     instructions))
 
 (message "%s" (lexer//lex "++>>"))
-(message "%s" (compiler//compile "+"))
-
 (message "%s" (compiler//compile "++-"))
 
 (message "%s" (vm//main (compiler//compile "++-") t))
