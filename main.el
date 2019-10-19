@@ -25,17 +25,38 @@
       (vm//increment-pc registers 1))
   stack)
 
+(defun vm//write-ram (registers ram)
+  "Store value at ram addr
+eax: ram addr
+ebx: value"
+  (let ((addr (alist-get 'eax registers))
+        (val (alist-get 'ebx registers)))
+    (setcar (nthcdr addr ram) val))
+  ram)
+
+(defun vm//read-ram (registers ram)
+  "Read value from ram. Return value in eax
+eax: ram addr
+return eax: value add ram addr"
+  (let ((addr (alist-get 'eax registers)))
+    (setcdr (assq 'eax registers) (car (nthcdr addr ram)))))
+
 
 (defun vm//main (instructions &optional log)
   (let ((stack '())
-        (registers '((eax . nil)
+        (registers '((eax . nil)  ; useful for counters
                      (ebx . nil)
                      (ecx . nil)
-                     (pc . 0))))  ; program counter
+                     (pc . 0)))  ; program counter
+        (ram (make-list 10 0)))
     (while (< (alist-get 'pc registers) (length instructions))
       (let* ((elt (nth (alist-get 'pc registers) instructions))
              (key (nth 0 elt))
              (val (nth 1 elt)))
+        (if (equal key "READ_RAM")
+            (vm//read-ram registers ram))
+        (if (equal key "WRITE_RAM")
+            (setq ram (vm//write-ram registers ram)))
         (if (equal key "LOAD")
             (setq stack (vm//load stack registers)))
         (if (equal key "STORE")
@@ -59,7 +80,7 @@
         (if (equal key "ADD")
             (setq stack (vm//op stack '+))))
       (if log
-          (message "%s %s" stack registers))
+          (message "%s %s %s" stack registers ram))
       (vm//increment-pc registers 1))
     stack))
 
@@ -78,23 +99,47 @@
 ;			  ("PUSH" 10)
 ;			  ("ADD"))))
 
-(message "%s" (vm//main '(("PUSH" 5)
+;; read ram
+(message "%s" (vm//main '(("PUSH" 0)
                           ("PUSH" eax)
                           ("STORE")
-                          ("PUSH" 1)
-                          ("PUSH" eax)
-                          ("LOAD")
-                          ("SUB")
-                          ("PUSH" eax)
-                          ("STORE")
-                          ("PUSH" eax)
-                          ("LOAD")
-                          ("IF")
-                          ("AJUMP" 2) ; if true
-                          ("RJUMP" 1) ; else
-                          ("POP")
                           ("PUSH" 10)
+                          ("PUSH" ebx)
+                          ("STORE")
+                          ("WRITE_RAM")
+                          ("PUSH" 0)
                           ("PUSH" eax)
-                          ("LOAD")
-                          ("ADD"))
+                          ("STORE")
+                          ("READ_RAM"))
                         t))
+
+;; write ram
+;(message "%s" (vm//main '(("PUSH" 0)
+;                          ("PUSH" eax)
+;                          ("STORE")
+;                          ("PUSH" 10)
+;                          ("PUSH" ebx)
+;                          ("STORE")
+;                          ("WRITE_RAM"))
+;                        t))
+
+; (message "%s" (vm//main '(("PUSH" 5)
+;                           ("PUSH" eax)
+;                           ("STORE")
+;                           ("PUSH" 1)
+;                           ("PUSH" eax)
+;                           ("LOAD")
+;                           ("SUB")
+;                           ("PUSH" eax)
+;                           ("STORE")
+;                           ("PUSH" eax)
+;                           ("LOAD")
+;                           ("IF")
+;                           ("AJUMP" 2) ; if true
+;                           ("RJUMP" 1) ; else
+;                           ("POP")
+;                           ("PUSH" 10)
+;                           ("PUSH" eax)
+;                           ("LOAD")
+;                           ("ADD"))
+;                         t))
