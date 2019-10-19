@@ -1,0 +1,100 @@
+(defun vm//op (stack op)
+  (push (funcall op (pop stack) (pop stack)) stack))
+
+(defun vm//pop (stack)
+  (cdr stack))
+
+(defun vm//store (stack registers)
+  (setcdr (assq (pop stack) registers) (pop stack))
+  stack)
+
+(defun vm//load (stack registers)
+  (push (cdr (assq (pop stack) registers)) stack))
+
+(defun vm//push (stack val)
+  (push val stack))
+
+(defun vm//increment-pc (registers val)
+  (setcdr (assq 'pc registers) (+ (alist-get 'pc registers) val)))
+
+(defun vm//set-pc (registers val)
+  (setcdr (assq 'pc registers) val))
+
+(defun vm//if (stack registers)
+  (if (equal (pop stack) 0)
+      (vm//increment-pc registers 1))
+  stack)
+
+
+(defun vm//main (instructions &optional log)
+  (let ((stack '())
+        (registers '((eax . nil)
+                     (ebx . nil)
+                     (ecx . nil)
+                     (pc . 0))))  ; program counter
+    (while (< (alist-get 'pc registers) (length instructions))
+      (let* ((elt (nth (alist-get 'pc registers) instructions))
+             (key (nth 0 elt))
+             (val (nth 1 elt)))
+        (if (equal key "LOAD")
+            (setq stack (vm//load stack registers)))
+        (if (equal key "STORE")
+            (setq stack (vm//store stack registers)))
+        (if (equal key "AJUMP") ; absolute jump
+            (vm//set-pc registers val))
+        (if (equal key "RJUMP") ; relative jump
+            (vm//increment-pc registers val))
+        (if (equal key "IF")
+            (setq stack (vm//if stack registers)))
+        (if (equal key "POP")
+            (setq stack (vm//pop stack)))
+        (if (equal key "PUSH")
+            (setq stack (vm//push stack val)))
+        (if (equal key "DIV")
+            (setq stack (vm//op stack '/)))
+        (if (equal key "MUL")
+            (setq stack (vm//op stack '*)))
+        (if (equal key "SUB")
+            (setq stack (vm//op stack '-)))
+        (if (equal key "ADD")
+            (setq stack (vm//op stack '+))))
+      (if log
+          (message "%s %s" stack registers))
+      (vm//increment-pc registers 1))
+    stack))
+
+
+;(message "%s" (vm//main '(("PUSH" 20)
+;			  ("PUSH" ebx)
+;			  ("STORE")
+;			  ("PUSH" ebx)
+;			  ("LOAD"))))
+
+;(message "%s" (vm//main '(("PUSH" 1)
+;			  ("PUSH" 4)
+;			  ("ADD")
+;			  ("RJUMP" 1)
+;			  ("POP")
+;			  ("PUSH" 10)
+;			  ("ADD"))))
+
+(message "%s" (vm//main '(("PUSH" 5)
+                          ("PUSH" eax)
+                          ("STORE")
+                          ("PUSH" 1)
+                          ("PUSH" eax)
+                          ("LOAD")
+                          ("SUB")
+                          ("PUSH" eax)
+                          ("STORE")
+                          ("PUSH" eax)
+                          ("LOAD")
+                          ("IF")
+                          ("AJUMP" 2) ; if true
+                          ("RJUMP" 1) ; else
+                          ("POP")
+                          ("PUSH" 10)
+                          ("PUSH" eax)
+                          ("LOAD")
+                          ("ADD"))
+                        t))
