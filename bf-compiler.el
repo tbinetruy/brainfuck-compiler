@@ -50,11 +50,34 @@ The steps are as follows:
   (push-instruction '("WRITE_RAM"))
   instructions)
 
+(defun compiler//increment-pc (instructions val)
+  "Increments the value of the program counter by val.
+
+It works as follows:
+- Push the value of ecx (where the pc is stored) onto the stack
+- Push val on the stack
+- Call the add instruction
+- Store the resulting value back into ecx
+"
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+
+  (push-instruction `("PUSH" ,val))
+
+  (push-instruction '("ADD"))
+
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("STORE")))
+
 (defun compiler//compile (code)
   (let ((tokens (lexer//lex code))
         (instructions '()))
     (setq instructions (compiler//init-code instructions))
     (dolist (el tokens)
+      (if (equal el ">")
+          (setq instructions (compiler//increment-pc instructions 1)))
+      (if (equal el "<")
+          (setq instructions (compiler//increment-pc instructions -1)))
       (if (equal el "-")
           (setq instructions (compiler//increment-value instructions -1)))
       (if (equal el "+")
@@ -64,7 +87,7 @@ The steps are as follows:
 (message "%s" (lexer//lex "++>>"))
 (message "%s" (compiler//compile "++-"))
 
-(message "%s" (vm//main (compiler//compile "++-") t))
+(message "%s" (vm//main (compiler//compile "++->>++") t))
 
 ;(message "%s" (vm//main '(("PUSH" 3)
 ;                          ("PUSH" eax)
