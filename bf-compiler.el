@@ -1,4 +1,5 @@
 (load-file "./vm.el")
+(require 'cl-lib)
 
 
 (defun lexer//lex (code)
@@ -69,29 +70,96 @@ It works as follows:
   (push-instruction '("PUSH" ecx))
   (push-instruction '("STORE")))
 
-(defun compiler//loop (tokens instructions))
+(defun compiler//loop-start (instructions jump-length)
+  "Check that value at pc (stored in ecx) is not 0.
+If it is, then jump by jump-length to matching ]
+otherwise, jump over the else instruction to the loop body."
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("STORE"))
+  (push-instruction '("READ_RAM"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("LOAD"))
+  (push-instruction '("IF"))
+  (push-instruction '("RJUMP" 1))
+  (push-instruction `("RJUMP" ,(+ 2 jump-length)))
+  instructions)
 
-(defun compiler//compile (code current-pos)
+(defun compiler//loop-end (instructions jump-length)
+  (push-instruction `("RJUMP" ,(+ -11 (- jump-length))))
+  instructions)
+
+(defun find-matching-char (tokens open-char close-char current-pos)
+  (let ((counter 0)
+        (return-value 0))
+    (dolist (el (nthcdr current-pos tokens))
+      (if (equal el open-char)
+          (setq counter (1+ counter)))
+      (if (equal el close-char)
+          (setq counter (1- counter)))
+      (if (equal counter 0)
+          (setq return-value current-pos)
+        (setq current-pos (1+ current-pos))))
+    return-value))
+
+
+(defun compiler//loop (code tokens instructions current-pos)
+  "Idea:
+- keep a record of loop beginnig because we'll need it for the jump
+- get value in ram at addr stored in pc and check if 0
+  + if 0 then  jump to end of loop location
+  + if not call compiler//compile at current-pos+1"
+  (let ((start-pos current-pos)
+        (matching-pos (find-matching-char tokens "[" "]" current-pos))
+        (current-token (nth current-pos tokens))
+        (middle-instructions '()))
+      (setq middle-instructions (nconc middle-instructions
+                                       (compiler//compile
+                                        (cl-subseq code
+                                                   current-pos
+                                                   (1- matching-pos))
+                                        nil)))
+    (setq instructions (compiler//loop-start instructions
+                                             (length middle-instructions)))
+    (setq instructions (nconc instructions middle-instructions))
+    (message "%s" middle-instructions)
+    (setq instructions (compiler//loop-end instructions
+                                           (length middle-instructions))))
+  instructions)
+
+(defun compiler//compile (code include-init-code)
   (let ((tokens (lexer//lex code))
-        (instructions '()))
-    (setq instructions (compiler//init-code instructions))
+        (instructions '())
+        (current-pos 0))
+    (if include-init-code
+        (setq instructions (compiler//init-code instructions)))
     (while (< current-pos (length tokens))
       (let ((el (nth current-pos tokens)))
-            (if (equal el ">")
-                (setq instructions (compiler//increment-pc instructions 1)))
-            (if (equal el "<")
-                (setq instructions (compiler//increment-pc instructions -1)))
-            (if (equal el "-")
-                (setq instructions (compiler//increment-value instructions -1)))
-            (if (equal el "+")
-                (setq instructions (compiler//increment-value instructions 1))))
+        (if (equal el "[")
+            (progn
+              (setq instructions (compiler//loop code
+                                                 tokens
+                                                 instructions
+                                                 current-pos))
+              (setq current-pos (find-matching-char tokens "[" "]" current-pos))))
+        (if (equal el ">")
+            (setq instructions (compiler//increment-pc instructions 1)))
+        (if (equal el "<")
+            (setq instructions (compiler//increment-pc instructions -1)))
+        (if (equal el "-")
+            (setq instructions (compiler//increment-value instructions -1)))
+        (if (equal el "+")
+            (setq instructions (compiler//increment-value instructions 1))))
       (setq current-pos (1+ current-pos)))
     instructions))
 
-(message "%s" (lexer//lex "++>>"))
-(message "%s" (compiler//compile "++-" 0))
+;(message "%s" (lexer//lex "++>>"))
+;(message "%s" (compiler//compile "++-"))
 
-(message "%s" (vm//main (compiler//compile "++->>++" 0) t))
+;(message "%s" (compiler//compile "++[-]" t) t)
+(message "%s" (vm//main (compiler//compile "++++++++[>]" t) t))
+;(message "%s" (vm//main (compiler//compile "++->>++") t))
 
 ;(message "%s" (vm//main '(("PUSH" 3)
 ;                          ("PUSH" eax)
