@@ -183,5 +183,7 @@ nil and all subsequent calls."
 
 ;; Hello world example. Code taken from:
 ;; https://en.wikipedia.org/wiki/Brainfuck#Hello_World!
-(setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
-(message "%s" (vm//main (compiler//compile src t) nil)) ; "prints Hello World!"
+;(setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
+;(message "%s" (vm//main (compiler//compile src t) nil)) ; "prints Hello World!"
+
+;(message "%s" (vm//main (compiler//compile "+++>+++<[->+<]" t)))

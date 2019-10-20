@@ -1,0 +1,18 @@
+* Introduction
+
+This is a toy project meant to teach lisp. It consists of a virtual machine supporting a dozen basic instructions along with a brainfuck compiler. Bellow is an example of how to compile a hello world brainfuck program to our virtual machine's bytecode before interpreting it:
+
+#+begin_src emacs-lisp
+  (load-file "./vm.el")
+  (load-file "./bf-compiler.el")
+
+  ;; Hello world example. Code taken from:
+  ;; https://en.wikipedia.org/wiki/Brainfuck#Hello_World!
+  (setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
+  (vm//main (compiler//compile src t) nil) ; "prints Hello World!"
+#+end_src
+
+#+RESULTS:
+| Hello World! |                                               |                             |
+| nil          | ((eax . 10) (ebx . 10) (ecx . 6) (pc . 1246)) | (0 0 72 100 87 33 10 0 0 0) |
+
