@@ -78,11 +78,11 @@ return eax: value add ram addr"
         (if (equal key "SUB")
             (setq stack (vm//op stack '-)))
         (if (equal key "ADD")
-            (setq stack (vm//op stack '+))))
-      (if log
-          (message "%s %s %s" stack registers ram))
+            (setq stack (vm//op stack '+)))
+        (if log
+            (message "%s %s %s %s" elt stack registers ram)))
       (vm//increment-pc registers 1))
-    stack))
+    `(,stack ,registers ,ram)))
 
 
 ;(message "%s" (vm//main '(("PUSH" 20)
