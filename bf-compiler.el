@@ -58,8 +58,7 @@ It works as follows:
 - Push the value of ecx (where the pc is stored) onto the stack
 - Push val on the stack
 - Call the add instruction
-- Store the resulting value back into ecx
-"
+- Store the resulting value back into ecx"
   (push-instruction '("PUSH" ecx))
   (push-instruction '("LOAD"))
 
@@ -87,10 +86,15 @@ otherwise, jump over the else instruction to the loop body."
   instructions)
 
 (defun compiler//loop-end (instructions jump-length)
-  (push-instruction `("RJUMP" ,(+ -11 (- jump-length))))
+  "Loop back to the start of the loop. It uses a relative jump backwards
+with length equal to that of the loop body (jump-length) added to then
+loop head code (added by compiler//loop-start)"
+  (let ((loop-head-length -11))  ; number of instructions in loop head
+    (push-instruction `("RJUMP" ,(+ loop-head-length (- jump-length)))))
   instructions)
 
 (defun find-matching-char (tokens open-char close-char current-pos)
+  "Finds the position in an array of chars of the matching characer."
   (let ((counter 0)
         (return-value 0))
     (dolist (el (nthcdr current-pos tokens))
@@ -130,6 +134,14 @@ otherwise, jump over the else instruction to the loop body."
   instructions)
 
 (defun compiler//append-stdout (instructions)
+  "Appends the char in pc (stored in ecx) to stdout.
+
+It works as follows:
+- store the pc from ecx to eax
+- call the READ_RAM instruction which reads ram at the
+  address stored in eax and writes the result in eax.
+- call the APPEND_STDOUT instruction, which writes to
+  stdout the ascii code stored in eax."
   (push-instruction '("PUSH" ecx))
   (push-instruction '("LOAD"))
   (push-instruction '("PUSH" eax))
@@ -139,6 +151,9 @@ otherwise, jump over the else instruction to the loop body."
   instructions)
 
 (defun compiler//compile (code include-init-code)
+  "Compiles a brainfuck code string. If this function is called
+recursively, set include-init-code to t in the first call and to
+nil and all subsequent calls."
   (let ((tokens (lexer//lex code))
         (instructions '())
         (current-pos 0))
@@ -166,5 +181,7 @@ otherwise, jump over the else instruction to the loop body."
       (setq current-pos (1+ current-pos)))
     instructions))
 
+;; Hello world example. Code taken from:
+;; https://en.wikipedia.org/wiki/Brainfuck#Hello_World!
 (setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
-(message "%s" (vm//main (compiler//compile src t) nil))
+(message "%s" (vm//main (compiler//compile src t) nil)) ; "prints Hello World!"
