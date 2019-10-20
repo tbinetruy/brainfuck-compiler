@@ -129,6 +129,15 @@ otherwise, jump over the else instruction to the loop body."
                                            (length middle-instructions))))
   instructions)
 
+(defun compiler//append-stdout (instructions)
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("STORE"))
+  (push-instruction '("READ_RAM"))
+  (push-instruction '("APPEND_STDOUT"))
+  instructions)
+
 (defun compiler//compile (code include-init-code)
   (let ((tokens (lexer//lex code))
         (instructions '())
@@ -144,6 +153,8 @@ otherwise, jump over the else instruction to the loop body."
                                                  instructions
                                                  current-pos))
               (setq current-pos (find-matching-char tokens "[" "]" current-pos))))
+        (if (equal el ".")
+            (setq instructions (compiler//append-stdout instructions)))
         (if (equal el ">")
             (setq instructions (compiler//increment-pc instructions 1)))
         (if (equal el "<")
@@ -176,3 +187,5 @@ otherwise, jump over the else instruction to the loop body."
 ;                          ("READ_RAM")
 ;                          ("PUSH" 1))
 ;                        t))
+(setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
+(message "%s" (vm//main (compiler//compile src t) nil))

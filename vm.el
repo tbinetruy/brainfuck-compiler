@@ -40,7 +40,9 @@ eax: ram addr
 return eax: value add ram addr"
   (let ((addr (alist-get 'eax registers)))
     (setcdr (assq 'eax registers) (car (nthcdr addr ram)))))
-
+(defun vm//append-stdout (stdout registers)
+  "Appends the ascii-code char stored in eax to stdout"
+  (concat stdout (char-to-string (alist-get 'eax registers))))
 
 (defun vm//main (instructions &optional log)
   (let ((stack '())
@@ -48,11 +50,14 @@ return eax: value add ram addr"
                      (ebx . nil)
                      (ecx . nil)
                      (pc . 0)))  ; program counter
-        (ram (make-list 10 0)))
+        (ram (make-list 10 0))
+        (stdout ""))
     (while (< (alist-get 'pc registers) (length instructions))
       (let* ((elt (nth (alist-get 'pc registers) instructions))
              (key (nth 0 elt))
              (val (nth 1 elt)))
+        (if (equal key "APPEND_STDOUT")
+            (setq stdout (vm//append-stdout stdout registers)))
         (if (equal key "READ_RAM")
             (vm//read-ram registers ram))
         (if (equal key "WRITE_RAM")
@@ -82,7 +87,7 @@ return eax: value add ram addr"
         (if log
             (message "%s %s %s %s" elt stack registers ram)))
       (vm//increment-pc registers 1))
-    `(,stack ,registers ,ram)))
+    `(,stdout ,stack ,registers ,ram)))
 
 
 ;(message "%s" (vm//main '(("PUSH" 20)
