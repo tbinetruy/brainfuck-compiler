@@ -83,7 +83,7 @@ otherwise, jump over the else instruction to the loop body."
   (push-instruction '("LOAD"))
   (push-instruction '("IF"))
   (push-instruction '("RJUMP" 1))
-  (push-instruction `("RJUMP" ,(+ 2 jump-length)))
+  (push-instruction `("RJUMP" ,(+ 1 jump-length)))
   instructions)
 
 (defun compiler//loop-end (instructions jump-length)
@@ -94,13 +94,14 @@ otherwise, jump over the else instruction to the loop body."
   (let ((counter 0)
         (return-value 0))
     (dolist (el (nthcdr current-pos tokens))
-      (if (equal el open-char)
-          (setq counter (1+ counter)))
-      (if (equal el close-char)
-          (setq counter (1- counter)))
-      (if (equal counter 0)
-          (setq return-value current-pos)
-        (setq current-pos (1+ current-pos))))
+      (if (equal 0 return-value)
+          (progn (if (equal el open-char)
+                     (setq counter (1+ counter)))
+                 (if (equal el close-char)
+                     (setq counter (1- counter)))
+                 (if (equal counter 0)
+                     (setq return-value current-pos)
+                   (setq current-pos (1+ current-pos))))))
     return-value))
 
 
@@ -159,6 +160,7 @@ otherwise, jump over the else instruction to the loop body."
 
 ;(message "%s" (compiler//compile "++[-]" t) t)
 (message "%s" (vm//main (compiler//compile "++++++++[>]" t) t))
+(message "%s" (vm//main (compiler//compile "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]" t) nil))
 ;(message "%s" (vm//main (compiler//compile "++->>++") t))
 
 ;(message "%s" (vm//main '(("PUSH" 3)
