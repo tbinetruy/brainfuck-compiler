@@ -2,7 +2,7 @@
 
 This is a toy project meant to teach lisp. It consists of a virtual machine supporting a dozen basic instructions along with a brainfuck compiler. Bellow is an example of how to compile a hello world brainfuck program to our virtual machine's bytecode before interpreting it:
 
-#+begin_src emacs-lisp
+#+begin_src emacs-lisp :exports both
   (load-file "./vm.el")
   (load-file "./bf-compiler.el")
 
