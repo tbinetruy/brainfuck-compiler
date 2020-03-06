@@ -84,7 +84,7 @@ We can now iterate over the list of instructions using ~while~ until the program
 
 Finally, we do case matching on the instruction name, execute it, and increment the program counter.
 
-#+begin_src emacs-lisp :exports both :session code
+#+begin_src emacs-lisp :session code
 (defun vm//main (instructions &optional log)
   (let ((stack '())
         (registers (list (cons 'pc  0))))  ; program counter
@@ -111,7 +111,7 @@ Finally, we do case matching on the instruction name, execute it, and increment 
 
 Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//push stack val)~ and assign its result back to ~stack~ with ~setq~ which allows to modify a variable that was defined in a ~let~ or ~let*~ block.
 
-#+begin_src emacs-lisp :exports both :session code
+#+begin_src emacs-lisp :session code
 (defun vm//push (stack val)
   (push val stack))
 #+end_src
@@ -121,7 +121,7 @@ Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//
 
 Now, the ~ADD~ instruction. Since ~SUB~, ~MUL~ and ~DIV~ work similarly, we have factored the logic into a function ~vm//op~ which we call by passing the lisp functions ~+~, ~-~ , ~*~ and ~/~. What this function does is that it pops two elements off the stack and applies the function passed as argument to them and pushes the result back on the stack. We apply a function with operators dynamically with ~funcall~:
 
-#+begin_src emacs-lisp :exports both :session code
+#+begin_src emacs-lisp :session code
 (defun vm//op (stack op)
   (push (funcall op (pop stack) (pop stack)) stack))
 #+end_src
@@ -133,7 +133,7 @@ The ~ADD~ instruction is then implemented as ~(vm//op stack '+)~ where we pass t
 
 The ~vm//increment-pc~ function increments by a value passed as argument the ~pc~ register. Setting the ~pc~ is a bit tricky, we want to set the second element of the key-value pair corresponding to ~pc~ in the registers alist. We do this using ~setcdr~ on ~(assq 'pc registers)~ with ~val~.
 
-#+begin_src emacs-lisp :exports both :session code
+#+begin_src emacs-lisp :session code
 (defun vm//set-pc (registers val)
   (setcdr (assq 'pc registers) val))
 
