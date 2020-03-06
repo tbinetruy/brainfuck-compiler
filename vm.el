@@ -46,10 +46,11 @@ return eax: value add ram addr"
 
 (defun vm//main (instructions &optional log)
   (let ((stack '())
-        (registers '((eax . nil)  ; useful for counters
-                     (ebx . nil)
-                     (ecx . nil)
-                     (pc . 0)))  ; program counter
+        (registers (list
+                    (cons 'eax nil)  ; useful for counters
+                    (cons 'ebx nil)
+                    (cons 'ecx nil)
+                    (cons 'pc  0)))  ; program counter
         (ram (make-list 10 0))
         (stdout ""))
     (while (< (alist-get 'pc registers) (length instructions))

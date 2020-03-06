@@ -1,4 +1,3 @@
-(load-file "./vm.el")
 (require 'cl-lib)
 
 
