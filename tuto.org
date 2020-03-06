@@ -1,0 +1,161 @@
+#+TITLE: Learning LISP by making a Bainfuck compiler
+
+Most of the time, hackers at Yourlabs work on useful stuff. Today however, I was bored and decided to lisp a bit by making what is probably the most useless program ever: a brainfuck compiler targeting a custom virtual machine. We'll first look into Brainfuck, how it works, and how it can be used to make small programs. We then develop a small virtual machine and a Brainfuck compiler targeting it.
+
+** Introduction to Brainfuck
+   
+Let us first understand what Brainfuck is about. The basic idea is that we have a heap at out disposition, represented as a list of integers, and a pointer to an entry in the list. We can navigate this heap in Brainfuck by moving the pointer around it an incrementing or decrementing the heap entry we are pointing to. Finally, we can output to stdout the heap entry that is currently being pointed to by converting it to ASCII. Before introducing the looping mechanism offered by Brainfuck, let us go over the syntax for the concepts we have just discussed.
+
+- ~<~: decrement the heap pointer
+- ~>~: increment the heap pointer
+- ~+~: increment the heap entry being pointed to by the heap pointer
+- ~-~: decrement the heap entry being pointed to by the heap pointer
+- ~.~: output as ASCII to stdout the heap entry being pointed to by the heap pointer.
+
+As an example, if we begin with a heap of length ten with each entries at 0, and want to set to ~[1, 2, 3, 0, 0, ...]~, we would have the following Brainfuck program:
+
+#+begin_src
++>++>+++
+#+end_src
+
+Let's compile this brainfuck program and run it through our VM we will program in this article:
+
+#+begin_src emacs-lisp :exports both :session tuto
+(load-file "./vm.el")
+(load-file "./bf-compiler.el")
+#+end_src
+
+#+RESULTS:
+: t
+
+#+begin_src emacs-lisp :exports both :session tuto
+(setq src "+>++>+++")
+(vm//main (compiler//compile src t))
+#+end_src
+
+#+RESULTS:
+| (1 2 3 0 0 0 0 0 0 0) |
+   
+As we can see, the heap end state is indeed a list of zeros with the three first elements as the first three natural numbers.
+
+Let us now introduce Brainfuck's looping mechanism. We surround a number of instructions to iterate over with ~[~ and ~]~, the loop will execute the instruction block one last time when the value in the heap at the heap pointer equals zero when beginning the loop. The following snippet 
+
+#+begin_src emacs-lisp :exports both :session tuto
+(vm//main (compiler//compile "+++>+++<[->+<]" t))
+#+end_src
+
+#+RESULTS:
+|   | nil | ((eax . 0) (ebx . 6) (ecx . 0) (pc . 166)) | (0 6 0 0 0 0 0 0 0 0) |
+
+We get the correct result of six in our heap's second entry! As an exercise, you could modify our addition function to have the result in the first heap entry rather than the second.
+
+*** Hello World
+
+Let us now conclude this Brainfuck tutorial by making a hello world. In this first snippet that I wrote, we increment until 32 the first heap entry, this is our space character that we'll use later. We then increment the heap pointer and start adding with ~+~ and printing to stdout with ~.~. We therefore have 72 plus signs since it corresponds to the letter 'H'. We then decrement by 3 to output 'E' /etc/. Once at the end of "HELLO", we decrement the heap pointer an output the space character. We increment back the heap pointer and continue outputting "WORLD". We could have used a single heap entry to output our words, but reserving the first entry for special chars and the second for letters saves us from having to decrement from 79 ('O') to 32 (' ') back to 87 ('W'). It's also funner :)
+
+#+begin_src emacs-lisp :exports both :session tuto
+(vm//main (compiler//compile "++++++++++++++++++++++++++++++++>++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.---.+++++++..+++.<.>++++++++.--------.+++.------.--------." t))
+#+end_src
+
+#+RESULTS:
+| HELLO WORLD | (32 68 0 0 0 0 0 0 0 0) |
+
+Bellow is a different hello world that I found on the Wikipedia entry.
+
+#+begin_src emacs-lisp :exports both :session tuto
+  (setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
+  (vm//main (compiler//compile src t) nil) ; "prints Hello World!"
+#+end_src
+
+#+RESULTS:
+| Hello World! | (0 0 72 100 87 33 10 0 0 0) |
+
+** Our virtual machine
+
+Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about bytecode, and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble in some ways to Assembly.
+
+From an abstract point of view, a virtual machine is a program that takes a /list of instructions/ that can operate on a /stack/ and a /heap/. We'll also implement a /program counter/ with /registers/, this will allow the VM to keep track of which instructions to execute next. 
+
+Let's get coding! There's a few Lisp concepts to go over after that, but most we will learn about as we code. The snippet bellow declares a function ~vm//main~ that takes a list of instructions as first argument and an optional ~log~ boolean which we'll use to see what is going on in our VM as it executes code.
+
+We then declare a stack as an empty list (~'()~) with the ~let~ macro. This macro takes a list of assignments as first argument and an expression as a second argument. The variables declared will be available from the code passed as second argument to ~let~. We also define our registers as a ~list~ of ~cons~ (which you can view as a list of length two) where the first element is the key and the second the value for that key. In Lisp, this is called an /associative list/ and can be viewed as a dictionary in Python. Hence our registers are a simple key-value store with the key being the register name and the value the value in that register. We only define a single register for now, called ~pc~ for /program counter/.
+
+We can now iterate over the list of instructions using ~while~ until the program counter, incremented at each iteration, grows bigger than the length of the instruction list. We use a special variant of ~let~ to parse the instruction: ~let*~. The difference with the former is subtle: without the star we cannot have the variables refer to each other in the first argument for ~let~ (the definitions). Here however, we get the element from the instruction list pointed to by the program counter (~(nth (alist-get 'pc registers) instructions)~) and then use this value to declare the variables ~key~ and ~value~ which correspond to the instruction name and its argument respectively.
+
+Finally, we do case matching on the instruction name, execute it, and increment the program counter.
+
+#+begin_src emacs-lisp :exports both :session code
+(defun vm//main (instructions &optional log)
+  (let ((stack '())
+        (registers (list (cons 'pc  0))))  ; program counter
+    (while (< (alist-get 'pc registers) (length instructions))
+      (let* ((instruction (nth (alist-get 'pc registers) instructions))
+             (key (nth 0 instruction))
+             (val (nth 1 instruction)))
+        (if (equal key "PUSH")
+            (setq stack (vm//push stack val)))
+        (if (equal key "ADD")
+            (setq stack (vm//op stack '+)))
+        (if (equal key "SUB")
+            (setq stack (vm//op stack '-)))
+        ; ...
+        ; ...
+        (if log
+            (message "%s %s %s" instruction stack registers)))
+      (vm//increment-pc registers 1))
+    `(,stack ,registers)))
+#+end_src
+
+#+RESULTS:
+: vm//main
+
+Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//push stack val)~ and assign its result back to ~stack~ with ~setq~ which allows to modify a variable that was defined in a ~let~ or ~let*~ block.
+
+#+begin_src emacs-lisp :exports both :session code
+(defun vm//push (stack val)
+  (push val stack))
+#+end_src
+
+#+RESULTS:
+: vm//push
+
+Now, the ~ADD~ instruction. Since ~SUB~, ~MUL~ and ~DIV~ work similarly, we have factored the logic into a function ~vm//op~ which we call by passing the lisp functions ~+~, ~-~ , ~*~ and ~/~. What this function does is that it pops two elements off the stack and applies the function passed as argument to them and pushes the result back on the stack. We apply a function with operators dynamically with ~funcall~:
+
+#+begin_src emacs-lisp :exports both :session code
+(defun vm//op (stack op)
+  (push (funcall op (pop stack) (pop stack)) stack))
+#+end_src
+
+#+RESULTS:
+: vm//op
+
+The ~ADD~ instruction is then implemented as ~(vm//op stack '+)~ where we pass the ~+~ function as a second argument.
+
+The ~vm//increment-pc~ function increments by a value passed as argument the ~pc~ register. Setting the ~pc~ is a bit tricky, we want to set the second element of the key-value pair corresponding to ~pc~ in the registers alist. We do this using ~setcdr~ on ~(assq 'pc registers)~ with ~val~.
+
+#+begin_src emacs-lisp :exports both :session code
+(defun vm//set-pc (registers val)
+  (setcdr (assq 'pc registers) val))
+
+(defun vm//increment-pc (registers val)
+  (vm//set-pc registers (+ (alist-get 'pc registers) val)))
+#+end_src
+
+#+RESULTS:
+: vm//increment-pc
+
+Let's try to add two numbers! All we need to do is ~PUSH~ the two numbers on the stack and call ~ADD~:
+
+#+begin_src emacs-lisp :exports both :session code
+(vm//main '(("PUSH" 10)
+            ("PUSH" 20)
+            ("ADD")))
+#+end_src
+
+#+RESULTS:
+|       30 |
+| (pc . 3) |
+
+As you can see, we have the correct output of 30 and our final program counter value is 3, as expected since we only have three instructions to run.
+
+** Compiling Brainfuck to our VM
