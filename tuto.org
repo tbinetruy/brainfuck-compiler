@@ -20,7 +20,7 @@ As an example, if we begin with a heap of length ten with each entries at 0, and
 
 Let's compile this brainfuck program and run it through our VM we will program in this article:
 
-#+begin_src emacs-lisp :exports both :session tuto
+#+begin_src emacs-lisp :session tuto
 (load-file "./vm.el")
 (load-file "./bf-compiler.el")
 #+end_src
@@ -45,7 +45,7 @@ Let us now introduce Brainfuck's looping mechanism. We surround a number of inst
 #+end_src
 
 #+RESULTS:
-|   | nil | ((eax . 0) (ebx . 6) (ecx . 0) (pc . 166)) | (0 6 0 0 0 0 0 0 0 0) |
+| (0 6 0 0 0 0 0 0 0 0) |
 
 We get the correct result of six in our heap's second entry! As an exercise, you could modify our addition function to have the result in the first heap entry rather than the second.
 
