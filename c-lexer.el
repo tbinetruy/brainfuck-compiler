@@ -1,14 +1,46 @@
+;;; c-lexer.el --- Support for the Foo programming language
+
+;; Copyright (C) 2010-2019 Your Name
+
+;; Author: Your Name <yourname@example.com>
+;; Maintainer: Someone Else <someone@example.com>
+;; Created: 14 Jul 2010
+;; Keywords: languages
+;; Homepage: http://example.com/foo
+;; Version: 0.0.0
+
+;; This file is not part of GNU Emacs.
+
+;; This file is free software...
+;; along with this file.  If not, see <https://www.gnu.org/licenses/>
+
+(defconst SEPARATOR (split-string ";{}()[]'\"" ""))
+(defconst OPERATOR (split-string "/ * + ++ - -- | || & && < <= >= > == !=" " "))
 (defconst SPECIAL-CHARS (split-string " ;/+*-{}()[]'\"|&<>=" ""))
-(defconst TOKENS '((word . 1)
-                   (specialchar . 2)))
 
-(defun lexer/create-word-token (name)
-  `(((name . ,name)
-     (type . ,(alist-get 'word TOKENS)))))
+(defconst KEYWORD (split-string "int float double function return true false"))
 
-(defun lexer/create-special-char-token (name)
+(defconst TOKENS '((identifier . 1)
+                   (specialchar . 2)
+                   (separator . 3)
+                   (operator . 4)
+                   (keyword . 5)))
+
+(defun lexer/create-keyword-token (name)
   `(((name . ,name)
-     (type . ,(alist-get 'specialchar TOKENS)))))
+     (type . ,(alist-get 'keyword KEYWORD)))))
+
+(defun lexer/create-identifier-token (name)
+  `(((name . ,name)
+     (type . ,(alist-get 'identifier TOKENS)))))
+
+(defun lexer/create-operator-token (name)
+  `(((name . ,name)
+     (type . ,(alist-get 'operator TOKENS)))))
+
+(defun lexer/create-separator-token (name)
+  `(((name . ,name)
+     (type . ,(alist-get 'separator TOKENS)))))
 
 (defun lexer/lex (src)
   "Trasforms c source code into a list of alists describing
@@ -39,7 +71,7 @@ Strategy:
                   (progn
                     (setq tokens (nconc
                                   tokens
-                                  (lexer/create-word-token
+                                  (lexer/create-identifier-token
                                    current-word)))
                     (setq current-word "")))
               (if (not (equal current-char " "))
@@ -58,3 +90,5 @@ return a;
 }")
 (setq result (lexer/lex src))
 (message "%s" result)
+
+;;; c-lexer.el ends here
