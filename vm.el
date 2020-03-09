@@ -5,10 +5,18 @@
   (cdr stack))
 
 (defun vm//store (stack registers)
+  "Stores the top stack frame into the register referred to
+by the top stack frame and pops these two value from the stack.
+Ex: [S, new_val, register_name] -> [S]
+    {R, register_name: old_val} -> {R, register_name: new_val}"
   (setcdr (assq (pop stack) registers) (pop stack))
   stack)
 
 (defun vm//load (stack registers)
+  "Pushes the content of the register referred to by
+the top stack frame on the stack and pops the register
+name.
+Ex: [S, register_name] -> [S, content(register_name)]"
   (push (cdr (assq (pop stack) registers)) stack))
 
 (defun vm//push (stack val)
