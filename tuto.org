@@ -2,7 +2,7 @@
 
 Most of the time, hackers at Yourlabs work on useful stuff. Today however, I was bored and decided to lisp a bit by making what is probably the most useless program ever: a brainfuck compiler targeting a custom virtual machine. We'll first look into Brainfuck, how it works, and how it can be used to make small programs. We then develop a small virtual machine and a Brainfuck compiler targeting it.
 
-** Introduction to Brainfuck
+* Part I: Introduction to Brainfuck
    
 Let us first understand what Brainfuck is about. The basic idea is that we have a heap at out disposition, represented as a list of integers, and a pointer to an entry in the list. We can navigate this heap in Brainfuck by moving the pointer around it an incrementing or decrementing the heap entry we are pointing to. Finally, we can output to stdout the heap entry that is currently being pointed to by converting it to ASCII. Before introducing the looping mechanism offered by Brainfuck, let us go over the syntax for the concepts we have just discussed.
 
@@ -49,7 +49,7 @@ Let us now introduce Brainfuck's looping mechanism. We surround a number of inst
 
 We get the correct result of six in our heap's second entry! As an exercise, you could modify our addition function to have the result in the first heap entry rather than the second.
 
-*** Hello World
+** Hello World
 
 Let us now conclude this Brainfuck tutorial by making a hello world. In this first snippet that I wrote, we increment until 32 the first heap entry, this is our space character that we'll use later. We then increment the heap pointer and start adding with ~+~ and printing to stdout with ~.~. We therefore have 72 plus signs since it corresponds to the letter 'H'. We then decrement by 3 to output 'E' /etc/. Once at the end of "HELLO", we decrement the heap pointer an output the space character. We increment back the heap pointer and continue outputting "WORLD". We could have used a single heap entry to output our words, but reserving the first entry for special chars and the second for letters saves us from having to decrement from 79 ('O') to 32 (' ') back to 87 ('W'). It's also funner :)
 
@@ -70,7 +70,7 @@ Bellow is a different hello world that I found on the Wikipedia entry.
 #+RESULTS:
 | Hello World! | (0 0 72 100 87 33 10 0 0 0) |
 
-** Our virtual machine
+* Part II: virtual machine boilerplate
 
 Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about bytecode, and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble in some ways to Assembly.
 
@@ -158,4 +158,577 @@ Let's try to add two numbers! All we need to do is ~PUSH~ the two numbers on the
 
 As you can see, we have the correct output of 30 and our final program counter value is 3, as expected since we only have three instructions to run.
 
-** Compiling Brainfuck to our VM
+* Part III: Compiling Brainfuck subset to our VM's bytecode
+
+Now that we've learned how Brainfuck works and have our VM's boilerplate, we can start compiling a first set of Brainfuck instructions to our bytecode. We'll need to make some modifications to our VM: add a heap and a a heap pointer. Then, we'll be able to easily compile the ~+~, ~-~ , ~<~ and ~>~ instructions.
+
+** VM modifications
+    
+We'll add on top of our VM's stack and registers, some RAM initialized as a list of zeros with ~make-list~. This RAM will be used for our Brainfuck runtime's heap. We'll also add the ~READ_RAM~ and ~WRITE_RAM~ instructions to interact with the VM's RAM. Finally, we need three new registers: ~eax~, ~ebx~ and ~ecx~ which essentially gives our VM three global variables. ~eax~ and ~ebx~ will be used by some VM instructions such as ~WRITE_RAM~ which reads the value to write in ~ebx~ and the location to write to as ~eax~. We could implement ~WRITE_RAM~ only on the stack by popping the two top stack frames and acting upon them, but I have chosen to implement them as registers to mimic the way system calls work on Linux. However, our compiler will use the ~ecx~ register to store the heap pointer since we need to store it somewhere. An other way to implement the heap pointer would be by implementing a stack pointer that would allow us to move around the stack. We could then store the heap pointer (and any other variables) by pushing it on the stack and recovering it at any time by moving the stack pointer back to the variable location. This is how variables can be implemented on a compiler for the Tezos blockchain virtual machine.
+
+We also need two helpers to store and load a value from a register:
+
+#+begin_src emacs-lisp :session code
+(defun vm//store (stack registers)
+  "Stores the top stack frame into the register referred to
+by the top stack frame and pops these two value from the stack.
+Ex: [S, new_val, register_name] -> [S]
+    {R, register_name: old_val} -> {R, register_name: new_val}"
+  (setcdr (assq (pop stack) registers) (pop stack))
+  stack)
+
+(defun vm//load (stack registers)
+  "Pushes the content of the register referred to by
+the top stack frame on the stack and pops the register
+name.
+Ex: [S, register_name] -> [S, content(register_name)]"
+  (push (cdr (assq (pop stack) registers)) stack))
+
+(defun vm//write-ram (registers ram)
+  "Store value at ram addr
+eax: ram addr
+ebx: value"
+  (let ((addr (alist-get 'eax registers))
+        (val (alist-get 'ebx registers)))
+    (setcar (nthcdr addr ram) val))
+  ram)
+
+(defun vm//read-ram (registers ram)
+  "Read value from ram. Return value in eax
+eax: ram addr
+return eax: value at ram addr"
+  (let ((addr (alist-get 'eax registers)))
+    (setcdr (assq 'eax registers) (car (nthcdr addr ram)))))
+#+end_src
+
+#+RESULTS:
+: vm//read-ram
+
+#+begin_src emacs-lisp :session code
+(defun vm//main (instructions &optional log)
+  (let ((stack '())
+        (registers (list 
+                    (cons 'eax  0)
+                    (cons 'ebx  0)
+                    (cons 'ecx  0)   ; heap pointer
+                    (cons 'pc  0)))  ; program counter
+        (ram (make-list 10 0)))
+    (while (< (alist-get 'pc registers) (length instructions))
+      (let* ((instruction (nth (alist-get 'pc registers) instructions))
+             (key (nth 0 instruction))
+             (val (nth 1 instruction)))
+        (if (equal key "READ_RAM")
+            (vm//read-ram registers ram))
+        (if (equal key "WRITE_RAM")
+            (setq ram (vm//write-ram registers ram)))
+        (if (equal key "LOAD")
+            (setq stack (vm//load stack registers)))
+        (if (equal key "STORE")
+            (setq stack (vm//store stack registers)))
+        (if (equal key "PUSH")
+            (setq stack (vm//push stack val)))
+        (if (equal key "ADD")
+            (setq stack (vm//op stack '+)))
+        (if (equal key "SUB")
+            (setq stack (vm//op stack '-)))
+        (if log
+            (message "%s %s %s" instruction stack registers)))
+      (vm//increment-pc registers 1))
+    `(,stack ,registers, ram)))
+#+end_src
+
+#+RESULTS:
+: vm//main
+
+In the snippet bellow, we push 5 to ~eax~ and 10 to ~ebx~ and call ~WRITE_RAM~ to store 10 at heap address 5. We also call ~READ_RAM~ which will write 10 to the ~eax~ register since this register contained 5 before calling the instruction meaning that the content of ~eax~, 5, will be replaced with the heap value at 5, which is 10. Note that we end up with an empty stack:
+
+#+begin_src emacs-lisp :export both :session code
+(vm//main '(("PUSH" 5)
+            ("PUSH" eax)
+            ("STORE")
+            ("PUSH" 10)
+            ("PUSH" ebx)
+            ("STORE")
+            ("WRITE_RAM")
+            ("READ_RAM")))
+#+end_src
+
+#+RESULTS:
+| nil | ((eax . 10) (ebx . 10) (pc . 8)) | (0 0 0 0 0 10 0 0 0 0) |
+
+** Compiling
+
+Finally, we can start compiling our Brainfuck instruction subset. The first thing we need is a /lexer/, which will tokenize Brainfuck. It is a very simple lexer that just take a string with no spaces and ouputs a list of characters:
+
+
+#+begin_src emacs-lisp :export both :session code
+(defun lexer//lex (code)
+  (split-string code ""))
+
+(lexer//lex "++++>+++++<[->+<]")
+#+end_src
+
+#+RESULTS:
+| + | + | + | + | > | + | + | + | + | + | < | [ | - | > | + | < | ] |
+
+Keep It Simple Stupid !
+
+Let's now write some boilerplate for our compiler. We need a function that take some code as input and lexes it, we store the result in a variable ~tokens~ which we will iterate over. We also need an ~instructions~ variable which is initialized as an empty list and which will contain the bytecode representation of the Brainfuck code that will be ran through our VM. We also need a position counter called ~current-pos~ which will contain a pointer to the current ~token~ to compile.
+
+We then iterate over the token list and process them (~+~, ~-~, ~<~ and ~>~):
+
+#+begin_src emacs-lisp :session code
+(defun compiler//init-code (instructions)
+  "Initialize the program counter, stored in ecx, to 0."
+  (push-instruction '("PUSH" 0))
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("STORE"))
+  instructions)
+
+(defun compiler//compile (code)
+  "Compiles a Brainfuck code string."
+  (let ((tokens (lexer//lex code))
+        (instructions '())
+        (current-pos 0))
+    (setq instructions (compiler//init-code instructions))
+    (while (< current-pos (length tokens))
+      (let ((el (nth current-pos tokens)))
+        (if (equal el ">")
+            (setq instructions (compiler//increment-pc instructions 1)))
+        (if (equal el "<")
+            (setq instructions (compiler//increment-pc instructions -1)))
+        (if (equal el "-")
+            (setq instructions (compiler//increment-value instructions -1)))
+        (if (equal el "+")
+            (setq instructions (compiler//increment-value instructions 1))))
+      (setq current-pos (1+ current-pos)))
+    instructions))
+#+end_src
+
+#+RESULTS:
+: compiler//compile
+
+
+#+begin_src emacs-lisp :session code
+(defmacro push-instruction (instr)
+  `(setq instructions (nconc instructions (list ,instr))))
+#+end_src
+
+#+RESULTS:
+: push-instruction
+
+
+#+begin_src emacs-lisp :session code
+(defun compiler//increment-pc (instructions val)
+  "Increments the value of the program counter by val.
+
+It works as follows:
+- Push the value of ecx (where the pc is stored) onto the stack
+- Push val on the stack
+- Call the add instruction
+- Store the resulting value back into ecx"
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+
+  (push-instruction `("PUSH" ,val))
+
+  (push-instruction '("ADD"))
+
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("STORE")))
+#+end_src
+
+#+RESULTS:
+: compiler//increment-pc
+
+#+begin_src emacs-lisp :session code
+(defun compiler//increment-value (instructions val)
+  "Increments by val the content of the address pointed at by the pc.
+
+The steps are as follows:
+- Get the program counter from ecx and store it to eax.
+  This is the address at which we want to increment the value.
+- We then read from the ram at the address in eax (the pc)
+- The value we read is now in eax, and we want to load it on the stack
+- We can now add 1 to the value we pushed on the stack
+- and store it back in ebx.
+- Finally, we store the pc in eax again
+- and call the store to ram syscall."
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("STORE"))
+
+  (push-instruction '("READ_RAM"))
+
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("LOAD"))
+
+  (push-instruction `("PUSH" ,val))
+  (push-instruction '("ADD"))
+
+  (push-instruction '("PUSH" ebx))
+  (push-instruction '("STORE"))
+
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("STORE"))
+
+  (push-instruction '("WRITE_RAM"))
+  instructions)
+#+end_src
+
+#+RESULTS:
+: compiler//increment-value
+
+Let's run a simple example making use of the Brainfuck subset we have implemented in the compiler:
+
+#+begin_src emacs-lisp :export both :session code
+(vm//main (compiler//compile "+>++>+++<-"))
+#+end_src
+
+#+RESULTS:
+| (eax . 1) | (ebx . 1) | (ecx . 1) | (pc . 133) |   |   |   |   |   |   |
+|         1 |         1 |         3 |          0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+As expected, the heap state we get is ~(1 1 3 0 ... 0)~ meaning that we have properly compiled these instructions.
+
+
+* Part IV: Adding Brainfuck loops to our compiler
+   
+We'll now implement the Brainfuck's looping mechanism. This feature is crucial as without it, Brainfuck would not be a Turing complete language.
+
+** VM modifications
+    
+We'll need to implement /jumps/ and /conditional statements/ in our VM. Indeed, Brainfuck's looping mechanism, introduced in Part I, requires to /jump/ back to the beginning of the loop block /only if/ the heap value at the location the heap pointer points to is not zero when the current iteration began. We'll implement the jump as a /relative/ jump simply by incrementing or decrementing the program counter.
+
+The if statement is a bit trickier: if the top stack frame is 0 (~False~), then increment the program counter by one additional unit which put on top of the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by two. If the top stack frame differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
+
+#+begin_src emacs-lisp :session code
+(defun vm//if (stack registers)
+  "Pops the top stack frame and increments the program counter by
+unity if it is eqaul to 0, otherwise do nothing."
+  (if (equal (pop stack) 0)
+      (vm//increment-pc registers 1))
+  stack)
+#+end_src
+
+#+RESULTS:
+: vm//if
+
+We can now add the ~IF~ and ~RJUMP~ instructions on our VM:
+
+#+begin_src emacs-lisp :session code
+(defun vm//main (instructions &optional log)
+  (let ((stack '())
+        (registers (list 
+                    (cons 'eax  0)
+                    (cons 'ebx  0)
+                    (cons 'ecx  0)   ; heap pointer
+                    (cons 'pc  0)))  ; program counter
+        (ram (make-list 10 0)))
+    (while (< (alist-get 'pc registers) (length instructions))
+      (let* ((instruction (nth (alist-get 'pc registers) instructions))
+             (key (nth 0 instruction))
+             (val (nth 1 instruction)))
+        (if (equal key "RJUMP") ; relative jump
+            (vm//increment-pc registers val))
+        (if (equal key "IF")    ; conditional statement
+            (setq stack (vm//if stack registers)))
+        (if (equal key "READ_RAM")
+            (vm//read-ram registers ram))
+        (if (equal key "WRITE_RAM")
+            (setq ram (vm//write-ram registers ram)))
+        (if (equal key "LOAD")
+            (setq stack (vm//load stack registers)))
+        (if (equal key "STORE")
+            (setq stack (vm//store stack registers)))
+        (if (equal key "PUSH")
+            (setq stack (vm//push stack val)))
+        (if (equal key "ADD")
+            (setq stack (vm//op stack '+)))
+        (if (equal key "SUB")
+            (setq stack (vm//op stack '-)))
+        (if log
+            (message "%s %s %s" instruction stack registers)))
+      (vm//increment-pc registers 1))
+    `(,stack ,registers, ram)))
+#+end_src
+
+#+RESULTS:
+: vm//main
+
+Let's test these new instructions. We'll try both if cases to demonstrate how it works. The snippet bellow pushes 0 and calls ~IF~. We therefore expect that condition to fail and hence skip the ~("PUSH" 10)~ instruction leading to a final stack equal to ~(20)~.
+
+#+begin_src emacs-lisp :session code
+(vm//main '(("PUSH" 0)
+            ("IF")
+            ("RJUMP" 1) ; if true
+            ("RJUMP" 1) ; else
+            ("PUSH" 10)
+            ("PUSH" 20)))
+#+end_src
+
+#+RESULTS:
+|        20 |           |           |          |   |   |   |   |   |   |
+| (eax . 0) | (ebx . 0) | (ecx . 0) | (pc . 6) |   |   |   |   |   |   |
+|         0 |         0 |         0 |        0 | 0 | 0 | 0 | 0 | 0 | 0 |
+ 
+Testing with a True condition, we now do not skip over the ~("PUSH" 10)~ instruction leading to a stack equal to ~(20 10)~ as expected.
+
+#+begin_src emacs-lisp :session code
+(vm//main '(("PUSH" 1)
+            ("IF")
+            ("RJUMP" 1) ; if true
+            ("RJUMP" 1) ; else
+            ("PUSH" 10)
+            ("PUSH" 20)))
+#+end_src
+
+#+RESULTS:
+|        20 |        10 |           |          |   |   |   |   |   |   |
+| (eax . 0) | (ebx . 0) | (ecx . 0) | (pc . 6) |   |   |   |   |   |   |
+|         0 |         0 |         0 |        0 | 0 | 0 | 0 | 0 | 0 | 0 |
+ 
+** Compiling
+
+#+begin_src emacs-lisp :session code
+(defun compiler//loop-start (instructions jump-length)
+  "Check that value at pc (stored in ecx) is not 0.
+If it is, then jump by jump-length to matching ]
+otherwise, jump over the else instruction to the loop body."
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("STORE"))
+  (push-instruction '("READ_RAM"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("LOAD"))
+  (push-instruction '("IF"))
+  (push-instruction '("RJUMP" 1))
+  (push-instruction `("RJUMP" ,(+ 1 jump-length)))
+  instructions)
+
+(defun compiler//loop-end (instructions jump-length)
+  "Loop back to the start of the loop. It uses a relative jump backwards
+with length equal to that of the loop body (jump-length) added to then
+loop head code (added by compiler//loop-start)"
+  (let ((loop-head-length -11))  ; number of instructions in loop head
+    (push-instruction `("RJUMP" ,(+ loop-head-length (- jump-length)))))
+  instructions)
+
+(defun find-matching-char (tokens open-char close-char current-pos)
+  "Finds the position in an array of chars of the matching characer."
+  (let ((counter 0)
+        (return-value 0))
+    (dolist (el (nthcdr current-pos tokens))
+      (if (equal 0 return-value)
+          (progn (if (equal el open-char)
+                     (setq counter (1+ counter)))
+                 (if (equal el close-char)
+                     (setq counter (1- counter)))
+                 (if (equal counter 0)
+                     (setq return-value current-pos)
+                   (setq current-pos (1+ current-pos))))))
+    return-value))
+
+
+(defun compiler//loop (code tokens instructions current-pos)
+  "Idea:
+- keep a record of loop beginnig because we'll need it for the jump
+- get value in ram at addr stored in pc and check if 0
+  + if 0 then  jump to end of loop location
+  + if not call compiler//compile at current-pos+1"
+  (let ((start-pos current-pos)
+        (matching-pos (find-matching-char tokens "[" "]" current-pos))
+        (current-token (nth current-pos tokens))
+        (middle-instructions '()))
+      (setq middle-instructions (nconc middle-instructions
+                                       (compiler//compile
+                                        (cl-subseq code
+                                                   current-pos
+                                                   (1- matching-pos))
+                                        nil)))
+    (setq instructions (compiler//loop-start instructions
+                                             (length middle-instructions)))
+    (setq instructions (nconc instructions middle-instructions))
+    (setq instructions (compiler//loop-end instructions
+                                           (length middle-instructions))))
+  instructions)
+#+end_src
+
+#+RESULTS:
+: compiler//loop
+ 
+#+begin_src emacs-lisp :session code
+(defun compiler//compile (code include-init-code)
+  "Compiles a brainfuck code string. If this function is called
+recursively, set include-init-code to t in the first call and to
+nil and all subsequent calls."
+  (let ((tokens (lexer//lex code))
+        (instructions '())
+        (current-pos 0))
+    (if include-init-code
+        (setq instructions (compiler//init-code instructions)))
+    (while (< current-pos (length tokens))
+      (let ((el (nth current-pos tokens)))
+        (if (equal el "[")
+            (progn
+              (setq instructions (compiler//loop code
+                                                 tokens
+                                                 instructions
+                                                 current-pos))
+              (setq current-pos (find-matching-char tokens "[" "]" current-pos))))
+        (if (equal el ">")
+            (setq instructions (compiler//increment-pc instructions 1)))
+        (if (equal el "<")
+            (setq instructions (compiler//increment-pc instructions -1)))
+        (if (equal el "-")
+            (setq instructions (compiler//increment-value instructions -1)))
+        (if (equal el "+")
+            (setq instructions (compiler//increment-value instructions 1))))
+      (setq current-pos (1+ current-pos)))
+    instructions))
+#+end_src
+
+#+RESULTS:
+: compiler//compile
+
+#+begin_src emacs-lisp :session code
+(vm//main (compiler//compile "++>++<[->+<]" t))
+#+end_src
+
+#+RESULTS:
+| (eax . 0) | (ebx . 4) | (ecx . 0) | (pc . 134) |   |   |   |   |   |   |
+|         0 |         4 |         0 |          0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+* Part V: Adding the Brainfuck stdout instruction, ~.~
+
+** VM modifications
+   
+We'll need to add a variable to our ~vm//main~ function that can store ~stdout~, we'll initialize it as the empty string. The instruction ~APPEND_STDOUT~ will allow us to push, character by character, to this stdout string:
+
+#+begin_src emacs-lisp :session code
+(defun vm//main (instructions &optional log)
+  (let ((stack '())
+        (registers (list
+                    (cons 'eax nil)
+                    (cons 'ebx nil)
+                    (cons 'ecx nil)
+                    (cons 'pc  0)))
+        (ram (make-list 10 0))
+        (stdout ""))  ; This is the variable that will contain the standart output
+    (while (< (alist-get 'pc registers) (length instructions))
+      (let* ((elt (nth (alist-get 'pc registers) instructions))
+             (key (nth 0 elt))
+             (val (nth 1 elt)))
+        (if (equal key "APPEND_STDOUT")
+            (setq stdout (vm//append-stdout stdout registers)))
+        (if (equal key "READ_RAM")
+            (vm//read-ram registers ram))
+        (if (equal key "WRITE_RAM")
+            (setq ram (vm//write-ram registers ram)))
+        (if (equal key "LOAD")
+            (setq stack (vm//load stack registers)))
+        (if (equal key "STORE")
+            (setq stack (vm//store stack registers)))
+        (if (equal key "RJUMP")
+            (vm//increment-pc registers val))
+        (if (equal key "IF")
+            (setq stack (vm//if stack registers)))
+        (if (equal key "PUSH")
+            (setq stack (vm//push stack val)))
+        (if (equal key "SUB")
+            (setq stack (vm//op stack '-)))
+        (if (equal key "ADD")
+            (setq stack (vm//op stack '+)))
+        (if log
+            (message "%s %s %s %s" elt stack registers ram)))
+      (vm//increment-pc registers 1))
+    `(,stdout ,stack ,registers ,ram)))
+#+end_src
+
+#+RESULTS:
+: vm//main
+
+#+begin_src emacs-lisp :session code
+(vm//main '(("PUSH" 70)
+            ("PUSH" eax)
+            ("STORE")
+            ("APPEND_STDOUT")))
+#+end_src
+
+#+RESULTS:
+| F | nil | ((eax . 70) (ebx) (ecx) (pc . 4)) | (0 0 0 0 0 0 0 0 0 0) |
+
+** Compiling
+
+#+begin_src emacs-lisp :session code
+(defun compiler//append-stdout (instructions)
+  "Appends the char in pc (stored in ecx) to stdout.
+
+It works as follows:
+- store the pc from ecx to eax
+- call the READ_RAM instruction which reads ram at the
+  address stored in eax and writes the result in eax.
+- call the APPEND_STDOUT instruction, which writes to
+  stdout the ascii code stored in eax."
+  (push-instruction '("PUSH" ecx))
+  (push-instruction '("LOAD"))
+  (push-instruction '("PUSH" eax))
+  (push-instruction '("STORE"))
+  (push-instruction '("READ_RAM"))
+  (push-instruction '("APPEND_STDOUT"))
+  instructions)
+#+end_src
+
+#+RESULTS:
+: compiler//append-stdout
+  
+#+begin_src emacs-lisp :session code
+(defun compiler//compile (code include-init-code)
+  "Compiles a brainfuck code string. If this function is called
+recursively, set include-init-code to t in the first call and to
+nil and all subsequent calls."
+  (let ((tokens (lexer//lex code))
+        (instructions '())
+        (current-pos 0))
+    (if include-init-code
+        (setq instructions (compiler//init-code instructions)))
+    (while (< current-pos (length tokens))
+      (let ((el (nth current-pos tokens)))
+        (if (equal el "[")
+            (progn
+              (setq instructions (compiler//loop code
+                                                 tokens
+                                                 instructions
+                                                 current-pos))
+              (setq current-pos (find-matching-char tokens "[" "]" current-pos))))
+        (if (equal el ".")
+            (setq instructions (compiler//append-stdout instructions)))
+        (if (equal el ">")
+            (setq instructions (compiler//increment-pc instructions 1)))
+        (if (equal el "<")
+            (setq instructions (compiler//increment-pc instructions -1)))
+        (if (equal el "-")
+            (setq instructions (compiler//increment-value instructions -1)))
+        (if (equal el "+")
+            (setq instructions (compiler//increment-value instructions 1))))
+      (setq current-pos (1+ current-pos)))
+    instructions))
+#+end_src
+
+#+RESULTS:
+: compiler//compile
+
+Finally, we can compile the Hello World example taken from Wikipedia EN's Brainfuck entry:
+
+#+begin_src emacs-lisp :session code
+(setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
+(vm//main (compiler//compile src t) nil) ; "prints Hello World!"
+#+end_src
+
+#+RESULTS:
+| Hello World! |                                               |                             |
+| nil          | ((eax . 10) (ebx . 10) (ecx . 6) (pc . 1246)) | (0 0 72 100 87 33 10 0 0 0) |
