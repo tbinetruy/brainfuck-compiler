@@ -1,6 +1,5 @@
 (require 'cl-lib)
 
-
 (defun lexer//lex (code)
   (split-string code ""))
 

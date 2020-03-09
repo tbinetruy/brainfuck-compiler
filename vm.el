@@ -37,9 +37,10 @@ ebx: value"
 (defun vm//read-ram (registers ram)
   "Read value from ram. Return value in eax
 eax: ram addr
-return eax: value add ram addr"
+return eax: value at ram addr"
   (let ((addr (alist-get 'eax registers)))
     (setcdr (assq 'eax registers) (car (nthcdr addr ram)))))
+
 (defun vm//append-stdout (stdout registers)
   "Appends the ascii-code char stored in eax to stdout"
   (concat stdout (char-to-string (alist-get 'eax registers))))

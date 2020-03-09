@@ -9,7 +9,7 @@ This is a toy project meant to teach lisp. It consists of a virtual machine supp
   ;; Hello world example. Code taken from:
   ;; https://en.wikipedia.org/wiki/Brainfuck#Hello_World!
   (setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
-  (vm//main (compiler//compile src t) nil) ; "prints Hello World!"
+  (vm//main (compiler//compile src t)) ; "prints Hello World!"
 #+end_src
 
 #+RESULTS:
