@@ -134,7 +134,7 @@ We can now iterate over the list of instructions using ~while~ until the program
 
 Finally, we do case matching on the instruction name, execute it, and increment the program counter.
 
-At this point, you've probably wondered why are there quotes sprinkled all over our lisp code, and it's time to understand this syntax. As you can see, our Lisp code consists of nested expressions of the form ~(exp-name exp-arg-1 exp-arg-2 ... exp-arg-n)~ that will /evaluate/ and return other expressions. There are rules to the evaluations of expressions and in particular, when evaluating a function, all its arguments are evaluated first, and then passed to the function body for further use. The quote symbol we've been using is actually a lisp shorthand (hard coded in the elisp reader but usually implemented as a "reader macro", which elisp does not support if my memory does not fail me) for the ~quote~ macro, therefore ~'some-exp == (quote (some-exp))~. Unlike functions, macros do not evaluate their arguments when executing allowing them to be used to *manipulate* code, we'll dive into macros shortly. But sometimes, you want to pass un-evaluated arguments to a function, and in this case /quote/ the argument. This is what is been done when declaring a ~cons~ cell in the above snippet, and when calling ~alist-get~ for getting an alist's entry for a specific register. In both cases ~pc~ needs to be quoted as it is not available in the scope (either as a function, variable, macro or whatever) and hence would throw. By quoting it we actually pass the /symbol/, ~pc~, to ~cons~ and ~alist-get~ by quoting it with ~'pc~. Think of it this way: if we are not evaluating a variable that is not defined, then there is no problem, we just associate it a symbol and pass that symbol around :)
+At this point, you've probably wondered why are there quotes sprinkled all over our lisp code, and it's time to understand this syntax. As you can see, our Lisp code consists of nested expressions of the form ~(exp-name exp-arg-1 exp-arg-2 ... exp-arg-n)~ that will /evaluate/ and return other expressions. There are rules to the evaluations of expressions and in particular, when evaluating a function, all its arguments are evaluated first, and then passed to the function body for further use. The quote symbol we've been using is actually a lisp shorthand (hard coded in the elisp reader but usually implemented as a "reader macro", which elisp does not support if my memory does not fail me) for the ~quote~ macro, therefore ~'some-exp == (quote (some-exp))~. Unlike functions, macros do not evaluate their arguments when executing allowing them to be used to *manipulate* code, we'll dive into macros shortly. But sometimes, you want to pass un-evaluated arguments to a function, and in this case /quote/ the argument. This is what is been done when declaring a ~cons~ cell in the above snippet, and when calling ~alist-get~ for getting an alist's entry for a specific register. In both cases ~pc~ needs to be quoted as it is not available in the scope (either as a function, variable, macro or whatever) and hence would throw. By quoting it we actually pass the /symbol/, ~pc~, to ~cons~ and ~alist-get~ by quoting it with ~'pc~. Think of it this way: if we are not evaluating a variable that is not defined, then there is no problem, we just associate it a symbol and pass that symbol around :) Last but not least, this means that the quote can be used to get a list. Indeed, evaluating ~(1 2 3)~ will look for a function or macro called ~1~ and evaluate it with arguments ~2~ and ~3~; whereas ~'(1 2 3)~ (or equivalently, ~(quote (1 2 3))~) will return a /list/ with elements ~1~, ~2~, and ~3~. It may seem complex at first, and quiet frankly, I haven't completely grasped it myself (please help me out if I'm wrong ;)), but you'll get it as we start coding some more!
 
 Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//push stack val)~ and assign its result back to ~stack~ with ~setq~ which allows to modify a variable that was defined in a ~let~ or ~let*~ block. As you can see, pushing onto a list is very easy in elisp, we simply make use of the default ~push~ macro.
 
@@ -350,9 +350,9 @@ Finally, we can start compiling our Brainfuck instruction subset. The first thin
 
 Keep It Simple Stupid !
 
-Let's now write some boilerplate for our compiler. We need a function that take some code as input and lexes it, we store the result in a variable ~tokens~ which we will iterate over. We also need an ~instructions~ variable which is initialized as an empty list and which will contain the bytecode representation of the Brainfuck code that will be ran through our VM. We also need a position counter called ~current-pos~ which will contain a pointer to the current ~token~ to compile.
+Let's now write some boilerplate for our compiler. We need a function that take some code as input and lexes it, we store the result in a variable ~tokens~ which we will iterate over. We also need an ~instructions~ variable which is initialized as an empty list and which will contain the bytecode representation of the Brainfuck code that will be ran through our VM. We also need a position counter called ~current-pos~ which will contain a pointer to the current ~token~ to compile. Note that this counter is /independent/ from the VM, it's simply used by the compiler to track which Brainfuck token it is currently compiling. We then iterate over the token list and process them (~+~, ~-~, ~<~ and ~>~).
 
-We then iterate over the token list and process them (~+~, ~-~, ~<~ and ~>~):
+To get us warmed up, let's define a function that returns some initialization code. We want to initialize the /heap pointer/ to zero. Remember that in Brainfuck, the goal is to move around the heap (our VM's RAM) and increment or decrement entries to compute something. We therefore need to /track/ this heap pointer somewhere in our VM, why not in the ~ecx~ register since it isn't used by our VM? So let's initialize the ~ecx~ register to zero:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//init-code (instructions)
@@ -361,16 +361,24 @@ We then iterate over the token list and process them (~+~, ~-~, ~<~ and ~>~):
   (push-instruction '("PUSH" ecx))
   (push-instruction '("STORE"))
   instructions)
+#+end_src
 
+We now define our compiler's main body, ~compiler//compile~, that takes some code as its only argument, and returns a list of bytecode instructions for our VM to execute. This function is in some ways very similar to ~vm//main~:
+
+#+begin_src emacs-lisp :session code
 (defun compiler//compile (code)
   "Compiles a Brainfuck code string."
-  (let ((tokens (lexer//lex code))
-        (instructions '())
-        (current-pos 0))
-    (setq instructions (compiler//init-code instructions))
+  (let ((tokens (lexer//lex code))  ; Lex the code
+        (instructions  ; bytecode start with our init code
+         (compiler//init-code instructions))  
+        (current-pos 0))  ; we start at the first token
+    ; We iterate on the tokens
     (while (< current-pos (length tokens))
+      ; We parse the token
       (let ((el (nth current-pos tokens)))
         (if (equal el ">")
+            ; Call the appropriate function and update the 
+            ; instructions with the result
             (setq instructions (compiler//increment-pc instructions 1)))
         (if (equal el "<")
             (setq instructions (compiler//increment-pc instructions -1)))
@@ -378,7 +386,9 @@ We then iterate over the token list and process them (~+~, ~-~, ~<~ and ~>~):
             (setq instructions (compiler//increment-value instructions -1)))
         (if (equal el "+")
             (setq instructions (compiler//increment-value instructions 1))))
+      ; We increment the current position
       (setq current-pos (1+ current-pos)))
+    ; And return the final bytecode list
     instructions))
 #+end_src
 
@@ -395,7 +405,7 @@ We'll now implement a helper to push new instructions to the list of instruction
 #+RESULTS:
 : push-instruction
 
-Let us first investigate how to increment the program counter, stored in ~ecx~. We first push the register on the stack, load its value, add unity to it, and store it back to ~ecx~.
+Let us first investigate how to increment the program counter, stored in ~ecx~. We first push the register on the stack, load its value, add unity to it, and store it back to ~ecx~:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//increment-pc (instructions val)
@@ -420,48 +430,48 @@ It works as follows:
 #+RESULTS:
 : compiler//increment-pc
 
-Incrementing a value in the heap pointer to by the heap pointer (stored in ~ecx~) is a little more complex. We first store the heap value contained in ~ecx~ to ~eax~ and call ~READ_RAM~ to read the heap value at ~ecx~. This pushes the heap value on the stack allowing us to increment it by adding unity to it. We then store this new value by saving it to ~ebx~, moving the heap pointer to ~eax~ again, and calling ~WRITE_RAM~.
+Incrementing a value pointed to in the heap by the heap pointer (stored in ~ecx~) is a little more complex. We first copy the heap pointer in ~ecx~ to ~eax~ and call ~READ_RAM~ to read the heap value now at ~eax~ (and ~ecx~). This stores the heap value at the heap pointer on ~eax~ which we then push on the stack allowing us to increment. We then store this new value by saving it to ~ebx~, copying the heap pointer (in ~ecx~) to ~eax~ again (since its first copy was overwritten by the ~READ_RAM~ instruction), and calling ~WRITE_RAM~ (which writes ~ebx~ at RAM address ~eax~).
 
 #+begin_src emacs-lisp :session code
 (defun compiler//increment-value (instructions val)
-  "Increments by val the content of the address pointed at by the pc.
-
-The steps are as follows:
-- Get the program counter from ecx and store it to eax.
-  This is the address at which we want to increment the value.
-- We then read from the ram at the address in eax (the pc)
-- The value we read is now in eax, and we want to load it on the stack
-- We can now add 1 to the value we pushed on the stack
-- and store it back in ebx.
-- Finally, we store the pc in eax again
-- and call the store to ram syscall."
+  "Increments by val the content of the address pointed at by the pc."
+  ; Get the program counter from ecx and store it to eax.
+  ; This is the address at which we want to increment the value.
   (push-instruction '("PUSH" ecx))
   (push-instruction '("LOAD"))
   (push-instruction '("PUSH" eax))
   (push-instruction '("STORE"))
 
+  ; We then read from the ram at the address in eax (the pc)
   (push-instruction '("READ_RAM"))
 
+  ; The value we read is now in eax, and we want to load it on the stack
   (push-instruction '("PUSH" eax))
   (push-instruction '("LOAD"))
 
+  ; We can now add val to the value we pushed on the stack
   (push-instruction `("PUSH" ,val))
   (push-instruction '("ADD"))
 
+  ; and store it back in ebx.
   (push-instruction '("PUSH" ebx))
   (push-instruction '("STORE"))
 
+  ; Finally, we store the pc in eax again
   (push-instruction '("PUSH" ecx))
   (push-instruction '("LOAD"))
   (push-instruction '("PUSH" eax))
   (push-instruction '("STORE"))
 
+  ; and call the store to ram syscall.
   (push-instruction '("WRITE_RAM"))
   instructions)
 #+end_src
 
 #+RESULTS:
 : compiler//increment-value
+
+Notice that the above snippet introduces us to the ~quasi-quote~ (the backquote, ~`~) which when applied to an S-expression evaluates none of its arguments but the ones "escaped" by the comma, ~,~. This is a very convenient way to create new lists as it allows us to evaluate some of its elements. Hence if ~val~ evaluates to 10, then ~`(foo ,val)~ will evaluate to the list ~(foo 10)~.
 
 Let's run a simple example making use of the Brainfuck subset we have implemented in the compiler:
 
@@ -473,7 +483,7 @@ Let's run a simple example making use of the Brainfuck subset we have implemente
 | (eax . 1) | (ebx . 1) | (ecx . 1) | (pc . 133) |   |   |   |   |   |   |
 |         1 |         1 |         3 |          0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-As expected, the heap state we get is ~(1 1 3 0 ... 0)~ meaning that we have properly compiled these instructions.
+As expected, the heap state we get is ~(1 1 3 0 ... 0)~ meaning that we have properly compiled these instructions. Notice that our VM's program counter is at 133, meaning that our compiler compiled 133 instructions from this brainfuck code! Surely, there are a few optimizations that we could easily make, but we'll let the motivated reader give it a try. One obvious optimization that comes to mind is to "compress" repeating characters at compile time. For instance, this code ~++++~ increments by 1 the heap value currently pointed to instead of simply adding five to it at once. A similar optimization can be made with the mutation of the heap pointer with ~<~ and ~>~.
 
 
 * Part IV: Adding Brainfuck loops to our compiler
