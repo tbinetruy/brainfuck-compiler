@@ -320,7 +320,7 @@ We can now add these new instructions to our virtual machine:
 
 Let's play with it for a bit :) In the snippet bellow, we push 5 to ~eax~ and 10 to ~ebx~ and call ~WRITE_RAM~ to store 10 at heap address 5. We also call ~READ_RAM~ which will write 10 to the ~eax~ register since this register contained 5 before calling the instruction meaning that the content of ~eax~, 5, will be replaced with the heap value at 5, which is 10. Note that we end up with an empty stack:
 
-#+begin_src emacs-lisp :export both :session code
+#+begin_src emacs-lisp :exports both :session code
 (vm//main '(("PUSH" 5)
             ("PUSH" eax)
             ("STORE")
@@ -338,7 +338,7 @@ Let's play with it for a bit :) In the snippet bellow, we push 5 to ~eax~ and 10
 
 Finally, we can start compiling our Brainfuck instruction subset. The first thing we need is a /lexer/, which will tokenize Brainfuck code. It is a very simple lexer that just takes a string with no spaces and ouputs a list of characters making up the string:
 
-#+begin_src emacs-lisp :export both :session code
+#+begin_src emacs-lisp :exports both :session code
 (defun lexer//lex (code)
   (split-string code ""))
 
@@ -475,7 +475,7 @@ Notice that the above snippet introduces us to the ~quasi-quote~ (the backquote,
 
 Let's run a simple example making use of the Brainfuck subset we have implemented in the compiler:
 
-#+begin_src emacs-lisp :export both :session code
+#+begin_src emacs-lisp :exports both :session code
 (vm//main (compiler//compile "+>++>+++<-"))
 #+end_src
 
@@ -552,7 +552,7 @@ We can now add the ~IF~ and ~RJUMP~ instructions on our VM. ~RJUMP~'s implementa
 
 Let's test these new instructions. We'll try both /if/ cases to demonstrate how it works. The snippet bellow pushes 0 and calls ~IF~. We therefore expect that condition to fail and hence skip the ~("PUSH" 10)~ instruction leading to a final stack equal to ~(20)~.
 
-#+begin_src emacs-lisp :session code
+#+begin_src emacs-lisp :session code :exports both
 (vm//main '(("PUSH" 0)
             ("IF")
             ("RJUMP" 1) ; if true
@@ -568,7 +568,7 @@ Let's test these new instructions. We'll try both /if/ cases to demonstrate how 
  
 Testing with a True condition, we now do not skip over the ~("PUSH" 10)~ instruction leading to a stack equal to ~(20 10)~ as expected.
 
-#+begin_src emacs-lisp :session code
+#+begin_src emacs-lisp :session code :exports both
 (vm//main '(("PUSH" 1)
             ("IF")
             ("RJUMP" 1) ; if true
@@ -725,7 +725,7 @@ nil and all subsequent calls."
 
 We can now safely try some Brainfuck code that uses loops:
 
-#+begin_src emacs-lisp :session code
+#+begin_src emacs-lisp :session code :exports both
 (vm//main (compiler//compile "++>++<[->+<]" t))
 #+end_src
 
@@ -795,7 +795,7 @@ We can now add our ~std~ our variable, initialize it to 0, and add the ~APPEND_S
 
 Let's check that it works by storing the number 70 in ~eax~ and calling ~APPEND_STDOUT~, and ~stdout~ should equal "F":
 
-#+begin_src emacs-lisp :session code
+#+begin_src emacs-lisp :session code :exports both
 (vm//main '(("PUSH" 70)
             ("PUSH" eax)
             ("STORE")
@@ -871,7 +871,7 @@ nil and all subsequent calls."
 
 Finally, we can compile the Hello World example taken from Wikipedia's Brainfuck English entry and verify that it runs properly:
 
-#+begin_src emacs-lisp :session code
+#+begin_src emacs-lisp :session code :exports both
 (setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
 (vm//main (compiler//compile src t) nil) ; "prints Hello World!"
 #+end_src
