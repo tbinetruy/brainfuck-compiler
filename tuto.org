@@ -494,7 +494,7 @@ We'll now implement the Brainfuck's looping mechanism. This feature is crucial a
     
 We'll need to implement /jumps/ and /conditional statements/ in our VM. Indeed, Brainfuck's looping mechanism, introduced in Part I, requires to /jump/ back to the beginning of the loop block /only if/ the heap value at the location the heap pointer points to is not zero when the current iteration began. We'll implement the jump as a /relative/ jump simply by incrementing or decrementing the program counter.
 
-The /if/ statement is a bit trickier: if the top stack frame is 0 (~False~), then increment the program counter by one additional unit which put on top of the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by /two/. If the top stack frame differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
+The /if/ statement is a bit trickier: if the top stack frame is 0 (~False~), then increment the program counter by one additional unit which, added to the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by /two/. If the top stack frame differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
 
 #+begin_src emacs-lisp :session code
 (defun vm//if (stack registers)
@@ -508,7 +508,7 @@ unity if it is eqaul to 0, otherwise do nothing."
 #+RESULTS:
 : vm//if
 
-We can now add the ~IF~ and ~RJUMP~ instructions on our VM:
+We can now add the ~IF~ and ~RJUMP~ instructions on our VM. ~RJUMP~'s implementation is very simply, it modifies the program counter by a given value: ~(vm//increment-pc registers val)~.
 
 #+begin_src emacs-lisp :session code
 (defun vm//main (instructions &optional log)
@@ -701,6 +701,10 @@ nil and all subsequent calls."
 We'll need to add a variable to our ~vm//main~ function that can store ~stdout~, we'll initialize it as the empty string. The instruction ~APPEND_STDOUT~ will allow us to push, character by character, to this stdout string:
 
 #+begin_src emacs-lisp :session code
+(defun vm//append-stdout (stdout registers)
+  "Appends the ascii-code char stored in eax to stdout"
+  (concat stdout (char-to-string (alist-get 'eax registers))))
+
 (defun vm//main (instructions &optional log)
   (let ((stack '())
         (registers (list
