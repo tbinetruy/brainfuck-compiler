@@ -168,7 +168,7 @@ The ~vm//increment-pc~ function increments by a value passed as argument the ~pc
 #+RESULTS:
 : vm//set-pc
 
-We can now make use of ~vm//set-pc~ to implement ~vm//increment-pc~ which will increment our program counter, this function speaks for itself:
+We can now make use of ~vm//set-pc~ to implement ~vm//increment-pc~ which will increment our program counter, this function speaks for itself but parsing it if you've never lisped much before can take some time:
 
 #+begin_src emacs-lisp :session code
 (defun vm//increment-pc (registers val)
@@ -192,41 +192,83 @@ Let's now try to add two numbers! All we need to do is ~PUSH~ the two numbers on
 
 As you can see, we have the correct output of 30 and our final program counter value is 3, as expected since we only have three instructions to run.
 
-* Part III: Compiling Brainfuck subset to our VM's bytecode
+* Part III: Compiling a Brainfuck subset to our VM's bytecode
 
-Now that we've learned how Brainfuck works and have our VM's boilerplate, we can start compiling a first set of Brainfuck instructions to our bytecode. We'll need to make some modifications to our VM: add a heap and a heap pointer. Then, we'll be able to easily compile the ~+~, ~-~ , ~<~ and ~>~ instructions.
+Now that we've learned how Brainfuck works and have our small VM working, we can start compiling a first set of Brainfuck instructions to our bytecode. We'll need to make some modifications to our VM: add a heap and a heap pointer since that's how brainfuck works. Then, we'll be able to easily compile the ~+~, ~-~ , ~<~ and ~>~ instructions. The important takeaway here is that we now have two registers, one to track which instruction we are currently executing and another to identify where in the heap we are currently located at. We'll also need to add instructions to mutate the heap or else it would be of no use.
 
 ** VM modifications
     
-We'll add on top of our VM's stack and registers, some RAM initialized as a list of zeros with ~make-list~. This RAM will be used for our Brainfuck runtime's heap. We'll also add the ~READ_RAM~ and ~WRITE_RAM~ instructions to interact with the VM's RAM. Finally, we need three new registers: ~eax~, ~ebx~ and ~ecx~ which essentially gives our VM three global variables. ~eax~ and ~ebx~ will be used by some VM instructions such as ~WRITE_RAM~ which reads the value to write in ~ebx~ and the location to write to as ~eax~. We could implement ~WRITE_RAM~ only on the stack by popping the two top stack frames and acting upon them, but I have chosen to implement them as registers to mimic the way system calls work on Linux. However, our compiler will use the ~ecx~ register to store the heap pointer since we need to store it somewhere. An other way to implement the heap pointer would be by implementing a stack pointer that would allow us to move around the stack. We could then store the heap pointer (and any other variables) by pushing it on the stack and recovering it at any time by moving the stack pointer back to the variable location. This is how variables can be implemented on a compiler for the Tezos blockchain virtual machine which allows moving the /instruction pointer/ (/i.e./ the stack pointer) with the ~DIP~ and ~IIP~ instructions ("decrement instruction pointer" and "increment instruction pointer").
+We'll add on top of our VM's stack and registers, some RAM used as our head and initialized as a list of zeros using ~make-list~. We'll also add the ~READ_RAM~ and ~WRITE_RAM~ instructions to interact with the VM's RAM. Finally, we need three new registers: ~eax~, ~ebx~ and ~ecx~ which essentially gives our VM three global variables. ~eax~ and ~ebx~ will be used by some VM instructions such as ~WRITE_RAM~ which reads the value to write in ~ebx~ and the location to write to as ~eax~. We could implement ~WRITE_RAM~ only on the stack by popping the two top stack frames and acting upon them, but I have chosen to implement them as registers not only to mimic the way system calls work on Linux but also and mostly because it's fun. However, our compiler will use the ~ecx~ register to store the heap pointer since we need to store it somewhere.
 
-We also need two helpers to store and load a value from a register:
+An other way to implement the heap pointer would be by implementing a stack pointer that would allow us to move around the stack. We could then store the heap pointer (and any other variables) by pushing it on the stack and recovering it at any time by moving the stack pointer back to the variable location. This is how variables can be implemented on a compiler for the Tezos blockchain virtual machine which allows moving the /instruction pointer/ (/i.e./ the stack pointer) around with the ~DIP~ and ~IIP~ instructions ("decrement instruction pointer" and "increment instruction pointer").
+
+# We also need two helpers to store and load a value from a register:
+
+We first define two helpers that will allow us to easily store and read a value from a register. Starting with ~vm//store~ which takes a stack and a registers alist as argument, we simply generalize the work we did in ~vm//set-pc~. We'll use the stack to store the register name and its value by pushing them onto it, and pop them in ~vm//store~ to set the appropriate ~registers~ alist entry as in ~vm//set-pc~:
 
 #+begin_src emacs-lisp :session code
 (defun vm//store (stack registers)
-  "Stores the top stack frame into the register referred to
-by the top stack frame and pops these two value from the stack.
+  "Stores the second to top stack frame into the register referred
+to by the top stack frame and pops these two value from the stack.
 Ex: [S, new_val, register_name] -> [S]
     {R, register_name: old_val} -> {R, register_name: new_val}"
   (setcdr (assq (pop stack) registers) (pop stack))
   stack)
+#+end_src
 
+In the above docstring, we introduce a convenient notation allowing us to formalize the stack and register mutations by the function. ~[S, new_val, register_name]~ means "some stack with n elements and the top two elements being ~new_val~ and ~register_name~". ~{R, register_name: old_val}~ means "a set of registers ~R~ with an additional register ~register_name~ and value ~old_val~". The arrow, ~->~ indicates the transition of stack or register states before and after the function evaluates.
+
+We should also also implement a function allowing us to ~load~ a register onto the stack. In the ~vm//load~ function bellow, we get the register name to retrieve by poping the stack, and we use ~cdr~ and ~assq~ to retrieve the associated register cons and getting its second entry (the register value):
+
+#+begin_src emacs-lisp :session code
 (defun vm//load (stack registers)
   "Pushes the content of the register referred to by
 the top stack frame on the stack and pops the register
 name.
-Ex: [S, register_name] -> [S, content(register_name)]"
+Ex: [S, register_name] -> [S, registers[register_name]]"
   (push (cdr (assq (pop stack) registers)) stack))
+#+end_src
 
+#+RESULTS:
+: vm//load
+
+We then write to the ram address by reading from the register ~eax~ the address to write at, and from register ~ebx~ the new value. We have not yet seen how to edit a list ~nth~'s entry however. We need to dive into how lisps work a tiny bit in order to understand how to do that. In lisp, lists are essentially /linked lists/ constructed from /cons/. Each cons's /car/ is its value, and /cdr/ the address to the next con cell. Here's a little diagram that will help you out, they're taken from [1] and slightly modified for our needs, but I encourage you to go read [1] as it explains a lot about the inner workings of lisp ;)
+
+[1] https://www.emacswiki.org/emacs/ListModification
+
+#+begin_src
+
+              +-------+-------+
+ cons cell--->|  car  |  cdr  |
+              +-------+-------+
+
+         +-------+---+    +------+---+  +-------+-----+
+ list--->| alpha | *----->| beta | *--->| gamma | nil |
+         +-------+---+    +------+---+  +-------+-----+
+              ^              ^     ^               ^
+              |              |     |               |        
+          con cell 1        car   cdr           list end
+
+#+end_src
+
+We can now understand how to access a list's element, what we want is similar to finding the /nth cdr/ of the list. Which is exactly why elisp has a function ~nthcdr~ available for us. But that will actually only give us the sub-list going from ~n~, so we want its first element, its ~car~ which we can set with ~setcar~. Hence, in lisp, setting a list's /nth/ element is done by /setting/ the ~car~ of the ~nthcdr~ of a list :)
+
+Back to reading and writing our ram using registers. We'll have ~vm//write-ram~ read the ram address to write at register ~eax~ and the new value at register ~ebx~, we use this information to return an updated ram.
+
+#+begin_src emacs-lisp :session code
 (defun vm//write-ram (registers ram)
-  "Store value at ram addr
-eax: ram addr
+  "Stores a value at some ram address:
+eax: ram address
 ebx: value"
   (let ((addr (alist-get 'eax registers))
         (val (alist-get 'ebx registers)))
     (setcar (nthcdr addr ram) val))
   ram)
+#+end_src
 
+To spice it up a bit, we'll implement ~vm//read-ram~ by reading the address from register ~eax~ and /updating/ ~eax~ with that value, so the stack will not change when this function executes, only the content of the ~eax~ register! To do so, we set the desired register with ~setcdr~ and ~assq~ to the /nth/ entry in our ram, or in lisp words, the ~car~ of the ~nthcdr~ of the list. /n/ being the content of the ~eax~ register in our case:
+
+#+begin_src emacs-lisp :session code
 (defun vm//read-ram (registers ram)
   "Read value from ram. Return value in eax
 eax: ram addr
@@ -276,7 +318,7 @@ We can now add these new instructions to our virtual machine:
 #+RESULTS:
 : vm//main
 
-In the snippet bellow, we push 5 to ~eax~ and 10 to ~ebx~ and call ~WRITE_RAM~ to store 10 at heap address 5. We also call ~READ_RAM~ which will write 10 to the ~eax~ register since this register contained 5 before calling the instruction meaning that the content of ~eax~, 5, will be replaced with the heap value at 5, which is 10. Note that we end up with an empty stack:
+Let's play with it for a bit :) In the snippet bellow, we push 5 to ~eax~ and 10 to ~ebx~ and call ~WRITE_RAM~ to store 10 at heap address 5. We also call ~READ_RAM~ which will write 10 to the ~eax~ register since this register contained 5 before calling the instruction meaning that the content of ~eax~, 5, will be replaced with the heap value at 5, which is 10. Note that we end up with an empty stack:
 
 #+begin_src emacs-lisp :export both :session code
 (vm//main '(("PUSH" 5)
@@ -294,7 +336,7 @@ In the snippet bellow, we push 5 to ~eax~ and 10 to ~ebx~ and call ~WRITE_RAM~ t
 
 ** Compiling
 
-Finally, we can start compiling our Brainfuck instruction subset. The first thing we need is a /lexer/, which will tokenize Brainfuck code. It is a very simple lexer that just take a string with no spaces and ouputs a list of characters making up the string:
+Finally, we can start compiling our Brainfuck instruction subset. The first thing we need is a /lexer/, which will tokenize Brainfuck code. It is a very simple lexer that just takes a string with no spaces and ouputs a list of characters making up the string:
 
 #+begin_src emacs-lisp :export both :session code
 (defun lexer//lex (code)
