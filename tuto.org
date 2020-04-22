@@ -704,7 +704,11 @@ We'll need to add a variable to our ~vm//main~ function that can store ~stdout~,
 (defun vm//append-stdout (stdout registers)
   "Appends the ascii-code char stored in eax to stdout"
   (concat stdout (char-to-string (alist-get 'eax registers))))
+#+end_src
 
+We can now add our ~std~ our variable, initialize it to 0, and add the ~APPEND_STDOUT~ test case in the loop body:
+
+#+begin_src emacs-lisp :session code
 (defun vm//main (instructions &optional log)
   (let ((stack '())
         (registers (list
@@ -718,6 +722,7 @@ We'll need to add a variable to our ~vm//main~ function that can store ~stdout~,
       (let* ((elt (nth (alist-get 'pc registers) instructions))
              (key (nth 0 elt))
              (val (nth 1 elt)))
+        ; We're adding our new instruction
         (if (equal key "APPEND_STDOUT")
             (setq stdout (vm//append-stdout stdout registers)))
         (if (equal key "READ_RAM")
@@ -747,6 +752,8 @@ We'll need to add a variable to our ~vm//main~ function that can store ~stdout~,
 #+RESULTS:
 : vm//main
 
+Let's check that it works by storing the number 70 in ~eax~ and calling ~APPEND_STDOUT~, and ~stdout~ should equal "F":
+
 #+begin_src emacs-lisp :session code
 (vm//main '(("PUSH" 70)
             ("PUSH" eax)
@@ -756,6 +763,8 @@ We'll need to add a variable to our ~vm//main~ function that can store ~stdout~,
 
 #+RESULTS:
 | F | nil | ((eax . 70) (ebx) (ecx) (pc . 4)) | (0 0 0 0 0 0 0 0 0 0) |
+
+As you can see, this codes output is indeed "F" suggesting that our VM modifications works appropriately.
 
 ** Compiling
 
