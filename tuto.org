@@ -768,27 +768,29 @@ As you can see, this codes output is indeed "F" suggesting that our VM modificat
 
 ** Compiling
 
+We can now start compiling the ~.~ Brainfuck instruction and conclude this article :) We first read the ram at the program counter by copying ~ecx~ to ~eax~, calling ~READ_RAM~, and outputting to stdout with ~APPEND_STDOUT~:
+
 #+begin_src emacs-lisp :session code
 (defun compiler//append-stdout (instructions)
-  "Appends the char in pc (stored in ecx) to stdout.
-
-It works as follows:
-- store the pc from ecx to eax
-- call the READ_RAM instruction which reads ram at the
-  address stored in eax and writes the result in eax.
-- call the APPEND_STDOUT instruction, which writes to
-  stdout the ascii code stored in eax."
+  "Appends the char in pc (stored in ecx) to stdout."
+  ;  store the pc from ecx to eax
   (push-instruction '("PUSH" ecx))
   (push-instruction '("LOAD"))
   (push-instruction '("PUSH" eax))
   (push-instruction '("STORE"))
+  ; call the READ_RAM instruction which reads ram at the
+  ; address stored in eax and writes the result in eax.
   (push-instruction '("READ_RAM"))
+  ;  call the APPEND_STDOUT instruction, which writes to
+  ;  stdout the ascii code stored in eax."
   (push-instruction '("APPEND_STDOUT"))
   instructions)
 #+end_src
 
 #+RESULTS:
 : compiler//append-stdout
+
+We can now add the test case for the ~.~ token and call ~compiler//append-stdout~:
   
 #+begin_src emacs-lisp :session code
 (defun compiler//compile (code include-init-code)
