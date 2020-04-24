@@ -27,7 +27,51 @@ Let's get started :)
   
 In this Part, we'll first get our Elisp environment up and running, and then start experimenting with Brainfuck. The reason we do it in this order is simple: we'll be running some Elisp to get familiar with Brainfuck, and I'll use the occasion to introduce some of the Lisp concepts we'll be using. So we might as well have an Elisp environment going.
 
-** TODO Getting an Emacs Lisp environment running
+** Getting an Emacs Lisp environment running
+
+Nothing too complicated in this sub-part, we'll be installing a fresh emacs, cloning the compiler we'll be coding's repo so we can experiment with brainfuck in the next sub-part, and we'll be creating a new Elisp file. If you've already used emacs, you scan safely skip to the next sub-part.
+
+Installing Emacs is easy, it should be along the line of:
+
+#+begin_src bash
+# arch
+pacman -Syu emacs
+
+# ubuntu
+apt install emacs
+
+# MacOS
+brew install emacs
+
+# Windows
+choco install emacs
+#+end_src
+
+We can now clone the repo containing the Brainfuck compiler and VM we'll be coding, we'll see how to use them in the next sub-part:
+
+#+begin_src bash
+get clone git@github.com:tbinetruy/brainfuck-compiler.git
+cd brainfuck-compiler
+#+end_src
+
+We can now start up emacs in the freshly downloaded repository, appending ~-nw~ to start it in console mode if preferred:
+
+#+begin_src bash
+emacs  # windowed
+emacs -nw  # terminal mode
+#+end_src
+
+Now that Emacs is up and running, know that you can call any (public, or /interactive/ more precisely) functions by pressing ~M-x~ where ~M~ is the Meta key (usually ~alt~). We can create a new file with the command ~M-x find-file~, ~M-x~ will trigger a input at the bottom left of the Emacs window, where you can type in ~find-file~ and press Enter. There, you'll be able to enter a new Elisp file name, for example ~new.el~, and press the Enter key. Finally, press ~M-x save-buffer~ to write the file to disk. From there, you can call ~M-x eval-buffer~ to evaluate the buffer.
+
+Last but not least, as we will see, Lisp code necessitates a lot of parenthesis and can be rough to write and align by hand. The Lisp syntax being a tree, actually allow for Emacs to help you out writing and navigating Lisp code by operating on the tree. Just like Vim allows you to navigate text much simpler than by using arrows, the Emacs package ~smartparens~ [1] or ~paredit~ [2], allows one to navigate Lisp code semantically. Once you get used to it, you actually never have to write parenthesis ever again when writing and editing Lisp code. Check out on Emacsrocks [3] how the narrator uses ~paredit~ [3] to navigate Lisp code.
+
+In order to install these packages, you'll need to setup Emacs' community repository, MELPA [4] https://melpa.org/, which you can learn how to on Emacs' wiki [5]. Installing ~paredit~ is then as simple as typing ~M-x package-install RET paredit RET~.
+
+[1] https://github.com/Fuco1/smartparens
+[2] https://www.emacswiki.org/emacs/ParEdit
+[3] http://emacsrocks.com/e14.html
+[4] https://melpa.org/
+[5] https://www.emacswiki.org/emacs/MELPA
 
 ** An introduction to Brainfuck
 
