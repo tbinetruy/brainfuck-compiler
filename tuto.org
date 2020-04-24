@@ -808,16 +808,20 @@ We can now safely try some Brainfuck code that uses loops:
 Finally, it works! Onto ~.~!!
 
 * Part V: Adding the Brainfuck stdout instruction, ~.~
+  
+Let's now add the Brainfuck feature that allows us to print to the standard output. We'll need to enhance our VM with a variable to keep track of calls to the standard output along with the related bytecode instruction. Compiling should then be very easy!
 
 ** VM modifications
 
-We'll need to add a variable to our ~vm//main~ function that can store ~stdout~, we'll initialize it as the empty string. The instruction ~APPEND_STDOUT~ will allow us to push, character by character, to this stdout string:
+We'll need to add a variable to our ~vm//main~ function that can store ~stdout~, we'll initialize it as the empty string. The instruction ~APPEND_STDOUT~ will allow us to push, character by character:
 
 #+begin_src emacs-lisp :session code
 (defun vm//append-stdout (stdout registers)
   "Appends the ascii-code char stored in eax to stdout"
   (concat stdout (char-to-string (alist-get 'eax registers))))
 #+end_src
+
+~vm//append-stdout~ makes use of the ~concat~ function return the concatenation of its string arguments. ~char-to-list~ is a function that allows us to convert the /integer/ in the register ~eax~ to its associated ASCII character through a string of length one. Printing will therefore require to store a number in the ~eax~ register before calling ~APPEND_STDOUT~.
 
 We can now add our ~std~ our variable, initialize it to 0, and add the ~APPEND_STDOUT~ test case in the loop body:
 
@@ -881,7 +885,7 @@ As you can see, this codes output is indeed "F" suggesting that our VM modificat
 
 ** Compiling
 
-We can now start compiling the ~.~ Brainfuck instruction and conclude this article :) We first read the ram at the program counter by copying ~ecx~ to ~eax~, calling ~READ_RAM~, and outputting to stdout with ~APPEND_STDOUT~:
+We can now start compiling the ~.~ Brainfuck instruction and conclude Part V :) We first read the heap value at the heap pointer by copying ~ecx~ to ~eax~, calling ~READ_RAM~, and outputting to stdout with ~APPEND_STDOUT~:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//append-stdout (instructions)
