@@ -459,6 +459,8 @@ We'll now implement the ~push-instruction~ macro that we've been using. We imple
 #+RESULTS:
 : push-instruction
 
+Notice the new function, ~nconc~, which returns the concatenation of /n/ lists: ~(nconc '(1 2 3) '(4 5)) => (1 2 3 4 5)~.
+
 But what does this macro return? It transforms its argument ~instr~, which is a list, with the expression returned by the macro. It is this returned expression that will be executed by the macro caller. Hence, macros manipulate code before executing it allow for some very powerful meta-programming when needed. This is why macros do not evaluate their arguments, so you can manipulate them before hand. In particular, you can see that in Lisp's case, we can manipulate a program as data using macros. We call this property *homoiconicity* [1], which we quote some of the Wikipedia entry bellow:
 
 #+begin_quote
@@ -657,7 +659,7 @@ Testing with a True condition, we now do not skip over the ~("PUSH" 10)~ instruc
 
 We have now reached what I found being the roughest part of this project, implementing Brainfuck's looping mechanism. Not that it's particularly hard, it isn't really, but it was, I found, somewhat harder than what we've been working on so far. We'll go through it in order by first implementing the ~[~ token which begins the loop, we'll then end the loop with ~]~ and tight it all up by enhancing our ~compiler//compile~ function. We'll of course need to implement a little ~find-matching-char~ helper which will allow us to jump back to the beginning of the loop :D
 
-For ~compiler//loop-start~, the rule are easy, if the value at the program counter (~ecx~) is 0, then jump to ~jump-length~, otherwise jump to the next instruction. The function takes as argument ~instructions~ which is the currently compiled bytecode we will be adding to, and ~jump-length~ which corresponds to the number of tokens between the matching ~[~ and ~]~:
+For ~compiler//loop-start~, the rules are easy, if the heap value at the program counter (stored in ~ecx~) is 0, then jump to ~jump-length~, otherwise jump to the next instruction. The function takes as argument ~instructions~ which is the currently compiled bytecode we will be adding to, and ~jump-length~ which corresponds to the number of tokens between the matching ~[~ and ~]~. Some comments are added to explain the logic of various bytecode sequences. Our strategy is as follows: we first load the heap value we need to test on the stack, and then jump to the end of the loop if it equals zero, otherwise step to the next instruction:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//loop-start (instructions jump-length)
@@ -686,21 +688,21 @@ otherwise, jump over the else instruction to the loop body."
   instructions)
 #+end_src
 
-Handling the loop end, ~]~, is easy, we define a function ~compiler//loop-end~ that has the same signature as ~compiler//loop-start~, and jump back the argument ~jump-length~ instructions, plus the number of instructions written by ~compiler//loop-start~ to check if whether or not to continue iterating, which is the magic number 11. Here's a possible implementation for ~compiler//loop-end~:
+Handling the loop end, ~]~, is easy. We define a function ~compiler//loop-end~ that has the same signature as ~compiler//loop-start~, and jump back the amount dictated by the argument ~jump-length~ instructions. On top of which we need to add the number of instructions written by ~compiler//loop-start~ and ~compiler//loop-end~ to check whether or not to continue iterating, which in our case is the magic number 11. Here's a possible implementation for ~compiler//loop-end~:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//loop-end (instructions jump-length)
   "Loop back to the start of the loop. It uses a relative jump backwards
 with length equal to that of the loop body (jump-length) added to then
 loop head code (added by compiler//loop-start)"
-  (let ((loop-head-length -11))  ; number of instructions in loop head
-    (push-instruction `("RJUMP" ,(+ loop-head-length (- jump-length)))))
+  (let ((loop-extra-length -11))  ; number of instructions in loop head and tail
+    (push-instruction `("RJUMP" ,(+ loop-extra-length (- jump-length)))))
   instructions)
 #+end_src
 
 What we need to do now, is implement a function that can calculate the distance between matching brackets, so we can call ~compiler//loop-start~ and ~compile//loop-end~ since we need a parameter ~jump-length~. This function, ~find-matching-char~, will take as arguments a list of tokens, the opening character (~[~ in our case), and the closing character (~]~ in our case) which will allow us to handle nested patterns. It will also take the current compiler position in the list of tokens.
 
-We define a counter and a return value (to store the position of the matching character). We then introduce a new looping mechanism over lists, the ~dolist~ macro, which takes as first argument a list of length 2 with first element a variable name to be used in place of list elements, and a second element being the list to iterate over. The second argument to the ~dolist~ macro is a body to iterate over. We'll use it to iterate over the tokens from the current compiler position and conditionally increment or decrement as we encounter various ~open-char~ or ~close-char~. Finally, we return the location of the matching token:
+We define a counter and a return value (to store the position of the matching loop character). We now introduce a new looping mechanism over lists, the ~dolist~ macro, which takes as first argument an expression of length 2 with first element being a variable name to be used in place of list elements, and a second element being the list to iterate over. The second argument to the ~dolist~ macro is a body to iterate over. We'll use it to iterate over the tokens from the current compiler position and conditionally increment or decrement as we encounter various ~open-char~ or ~close-char~. Finally, we return the location of the matching token:
 
 #+begin_src emacs-lisp :session code
 (defun find-matching-char (tokens open-char close-char current-pos)
@@ -719,15 +721,14 @@ We define a counter and a return value (to store the position of the matching ch
     return-value))
 #+end_src
 
-Notice the ~progn~ macro used in the conditions. We've use ~if~ expressions quite a lot so far, and I haven't explained how to do an else case. As it turns out, the ~if~ macro takes three arguments: condition, a true case, and a false case. We still don't have the need for an else case, but clearly, we needed to be able to evaluate more than one expression in the top ~if~ expression true case. ~progn~ takes any number of arguments but wraps them so you can pass all its body as a single expression. This allows us to evaluate the nested conditions in the top condition's true case.
+Notice the ~progn~ macro used in the conditions. We've used ~if~ expressions quite a lot so far, but I haven't explained how to do an else case. As it turns out, the ~if~ macro takes three arguments: a condition, a true case, and a false case. We still don't have the need for an else case, but clearly, we needed to be able to evaluate more than one expression in the top ~if~ expression true case. ~progn~ takes any number of arguments but wraps them into a single expression so you can pass all its body "at once". This is what allows us to evaluate the nested conditions in the top condition's true case.
 
 We can now tie these three functions together into a ~compiler//loop~ function. There are a few new functions that we're using, namely:
 
-- ~nconc~, which concatenates two lists: ~(nconc '(1 2 3) '(4 5)) => (1 2 3 4 5)~
-- ~cl-subseq~, which finds a sublist and takes as arguments the sequence to slice, the starting index, and optionally the ending index
-- ~1-~, which simply subtracts unity from its argument
+- ~cl-subseq~, which returns a sublist and takes as arguments the sequence to slice, the starting index, and optionally the ending index,
+- ~1-~, which simply subtracts unity from its argument.
 
-We use these to extract the tokens making up the loop, called ~middle-instructinos~ in the code bellow, and concatenate them to the loop start and end mechanisms.
+We use these to extract the tokens making up the loop body, called ~middle-instructions~ in the code bellow, and concatenate them to the loop start and end mechanisms:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//loop (code tokens instructions current-pos)
@@ -758,7 +759,7 @@ We use these to extract the tokens making up the loop, called ~middle-instructin
 #+RESULTS:
 : compiler//loop
 
-The modification to ~compiler//compile~ is trivial, we add a test case for ~[~, get the looping instructions, and set the compiler's current token position to the loop's end, ~]~:
+The modification to ~compiler//compile~ is trivial, we add a test case for ~[~, add the loop related instructions, and set the compiler's current token position to the loop's end, ~]~:
 
 #+begin_src emacs-lisp :session code
 (defun compiler//compile (code include-init-code)
@@ -804,7 +805,7 @@ We can now safely try some Brainfuck code that uses loops:
 | (eax . 0) | (ebx . 4) | (ecx . 0) | (pc . 134) |   |   |   |   |   |   |
 |         0 |         4 |         0 |          0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
-It works! Onto ~.~ !!
+Finally, it works! Onto ~.~!!
 
 * Part V: Adding the Brainfuck stdout instruction, ~.~
 
