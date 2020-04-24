@@ -9,7 +9,7 @@
 
 A good developer friend of mine, once asked me if I could teach him some Lisp. I've been using Emacs for half a decade and have learned some Lisp along the way by extending it in various ways. Since he's an experienced developer, I figured I could try to teach him the little Lisp I knew by making a small stack based virtual machine. We then decided to keep going and tried write a Brainfuck compiler targeting our newly implemented VM. We got a good kick out of it and I wanted to share this experience with other developers wanting to learn a combination of Lisp, bytecode, and Brainfuck. This Lisp tutorial is therefore somewhat different from the more typical ones in that we're going to learn the language by coding in it, during which I'll explain the various concepts surrounding the language as we encounter them. By the end of this tutorial, we'll have learned some Lisp, implemented a small compiler targeting a custom made VM, and of course, Brainfuck. Sadly, you will not be a Lisp-guru by the end of this article. My hope however, is that you will be independent enough in Lisp to be mostly using Emacs Lisp's documentation from there. Please do not hesitate to look some of the concepts introduced in this article that you have trouble grasping, maybe because I could have done a better job explaining them, on Stack overflow as you go through this tutorial. Indeed, some of these concepts need to be played with to get a /feel/ for them and you'll therefore need more practice than is provided in this article. Luckily, this tutorial does not implement any compiler optimization, you could therefore decide to implement some obvious ones after finishing this article.
 
-That being said, there are two ways we could proceed in this project: 
+That being said, there are two ways we could proceed in this project:
 
 1. Design and implement a virtual machine first before getting started with the compiler,
 2. Restrict ourselves to a subset of Brainfuck, design a VM allowing for a compiler targeting it to compile this subset, and iterate until we have implemented all of Brainfuck's syntax.
@@ -24,7 +24,7 @@ Let's get started :)
 
 
 * Part I: Introduction to Brainfuck
-   
+
 Let us first understand what Brainfuck is about. The basic idea is that we have a heap at out disposal, represented as a list of integers, and a pointer to an entry in that list. We can navigate this heap in Brainfuck by moving the pointer around it by incrementing or decrementing it. Finally, we can output to ~stdout~ the heap entry that is currently being pointed to by converting it to its associated ASCII character. Before introducing the looping mechanism offered by Brainfuck, let us first go over the syntax for the concepts we have just discussed:
 
 - ~<~: decrement the heap pointer
@@ -62,7 +62,7 @@ Let's proceed by compiling our Brainfuck code with the function ~compiler//compi
 
 #+RESULTS:
 | (1 2 3 0 0 0 0 0 0 0) |
-   
+
 As we can see in the code's output just above, the heap's end state is indeed a list of zeros with the three first elements set to the first three natural numbers. Notice that we've defined a variable ~src~ with the Elisp /macro/ ~setq~ taking the variable name as a first argument and its value as a second argument. We've also just mentioned the word "macro", let's dive into what this means briefly because it's one of the biggest selling points used when discussing lisps. For now, we'll simply define it as a function that first /rewrites/ its arguments and then runs the transformation's output. Here, we don't really care how ~setq~ rewrites its arguments, we just know (thanks to Elisp's documentation) what it does. In this case, it rewrites them such that we have a variable ~src~ defined and now accessible from the current scope. Don't worry too much about macros for now, we'll discuss them in greater detail as we go through this tutorial and in particular, when we implement our own. However, I wanted to introduce them since we just encountered one in the pretty name of ~setq~.
 
 The second line in the above snippet runs nested functions. And interestingly, we will see that we can do this because, unlike macros, functions evaluates their arguments before evaluating their bodies [1]. Here, we can see that ~vm//main~ takes a single argument, which is the output of the ~compiler//compile~ function applied to the ~src~ variable.
@@ -105,11 +105,29 @@ Bellow is a different hello world that I found on the English Wikipedia entry fo
 
 * Part II: virtual machine boilerplate
 
-Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about bytecode, and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble in some ways to Assembly.
+Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about bytecode, and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble Assembly language in some ways.
 
-From an abstract point of view, our virtual machine will be a program that takes a /list of instructions/ that can operate on a /stack/ and a /heap/. We'll also implement /registers/ that can be used for various counters, such as the /program counter/, which allows the VM to keep track of which instructions is currently being executed. 
+From an abstract point of view, our virtual machine will be a program that takes a /list of instructions/ that can operate on a /stack/ and a /heap/. We'll also implement /registers/ that can be used to store variables, such as the /program counter/ tracking which instruction is currently being executed by the VM.
 
-Let's get coding! There are a few Lisp concepts to go over, but we will learn about them as we code. The snippet bellow declares a function ~vm//main~ that takes a list of instructions as first argument and an optional ~log~ boolean which we'll use to see what is going on in our VM as it executes code.
+Let's get Lisping! There are a few concepts to go over, but we will mostly learn about them as we code. The snippet bellow declares a function ~vm//main~, which takes a list of instructions as first argument and an optional ~log~ boolean which we'll use to see what is going on in our VM as it executes code. I've added a significant of comments to help you decipher what is going, and as you'll see, we've already gone over /most/ of the syntax.
+
+The structure of the VM will be simple. We first declare a ~stack~ and ~registers~ variables which will be a list and a key-value store respectively. We'll initialize the ~stack~ as an /empty list/. The ~registers~ variable will be an *associative list*, which we'll discover in more details bellow, with a single entry ~pc~, storing the /program counter/, initialized to /zero/. We then need to iterate through the instructions passed as arguments to ~vm//main~, and case match them to handle them accordingly. Finally, we return the ~stack~ and ~registers~ end states.
+
+Because we'll need to be adding numbers to execute Brainfuck, the first instructions the VM will be implementing will be ~PUSH~ and ~ADD~. The former pushes its argument on the stack, and the former adds the two top elements from the stack, and replaces them by the result. For instance, if the top of the stack is 1, that we ~PUSH~ 2 and call ~ADD~, the VM will pop 1 and 2 off the stack, add them, and push the result, 3, back on the stack:
+
+#+begin_src
+                               +------------+             
+                               |      2     |             
+  +------------+               +------------+            +------------+
+  |     1      |               |      1     |            |      3     |
+  +------------+    PUSH 2     +------------+    ADD     +------------+
+  |     ..     |  -------->    |     ..     |  --------> |     ..     |
+  +------------+               +------------+            +------------+
+  |Stack bottom|               |Stack bottom|            |Stack bottom|
+  +------------+               +------------+            +------------+
+#+end_src
+
+Finally, the code. For now, scan through the code, read the comments, and see you after where I'll try to explain you what is going on in detail.
 
 #+begin_src emacs-lisp :session code
 ; function declaration
@@ -118,18 +136,18 @@ Let's get coding! There are a few Lisp concepts to go over, but we will learn ab
   (let ((stack '())  ; The initial stack is an empty list
         (registers (list (cons 'pc  0))))  ; Registers are list of cons. Here, there
                                            ; is only 1 register, the program counter
-    ; Iteration over instruction set until program counter is 
+    ; Iteration over instruction set until program counter is
     ; greater then the instruction set length
     (while (< (alist-get 'pc registers) (length instructions))
-      ; Variable declarations: the current instruction obtained 
+      ; Variable declarations: the current instruction obtained
       ; using the program counter is stored. We then parse the
       ; instruction and its argument and store them.
       (let* ((instruction (nth (alist-get 'pc registers) instructions))
-             (key (nth 0 instruction))  
+             (key (nth 0 instruction))
              (val (nth 1 instruction)))
         ; Case matching and handling of current instruction
         (if (equal key "PUSH")
-            ; Update stack variable with mutate stack returned 
+            ; Update stack variable with mutate stack returned
             ; by the function`vm//push`
             (setq stack (vm//push stack val)))
         (if (equal key "ADD")
@@ -154,17 +172,21 @@ Let's get coding! There are a few Lisp concepts to go over, but we will learn ab
 #+RESULTS:
 : vm//main
 
-As you can see, we use the keyword ~defun~ in Elisp to declare a function. Its first argument is the function's name, the second a list of arguments - two in our case, with an optional one -, and ~n~ more expressions that will execute sequentially and return the last expression executed by the function.
+As you can see, we use the macro ~defun~ in Elisp to declare a function. Its first argument is the function's name, the second a list of arguments - two in our case, with an optional one -, and ~n~ more expressions that will evaluate sequentially and return the last expression evaluated by the function.
 
-In this function, we first declare a stack as an empty list using ~'()~ in the ~let~ macro (we'll go over them in a bit!). This macro takes a list of assignments as first argument and an expression as a second argument. The variables declared will be available from the code passed as second argument to ~let~ when it executes. We also define our registers as a ~list~ of ~cons~ (which you can view as a tuple of length two) where the first element is the key and the second the value for that key. In Lisp, this is called an /associative list/, or ~alist~, and can be viewed as a Python dictionary. Hence our registers are a simple /key->value/ store with the key being the register name and the value, the value stored at that register. We only define a single register for now, called ~pc~ for /program counter/.
+In this function, we first declare a stack as an empty list using ~'()~ in the ~let~ macro. This macro takes a list of assignments as first argument and an expression as a second argument. The variables declared will be available from the code passed as second argument to ~let~ when it executes. We also define our registers as a ~list~ of ~cons~ (which you can view as a pair) where the first element is the key and the second the value for that key. In Lisp, this is called an /associative list/, or ~alist~, and loosely be viewed as a dictionary. Hence our registers are a simple /key->value/ store with the key being the register name and the value, the value stored at that register. We only define a single register for now, called ~pc~ for /program counter/.
 
-We can now iterate over the list of instructions using ~while~ until the program counter, incremented at each iteration, grows larger than the length of the instruction list. We use a special variant of ~let~ to parse the instruction: ~let*~. The difference with the former is subtle: without the ~*~, we cannot have the variables refer to each other sequentially in the first argument for ~let~ (the definitions). Here however, we get the element from the instruction list pointed to by the program counter (with ~(nth (alist-get 'pc registers) instructions)~) and then use this value to declare the variables ~key~ and ~value~ which correspond to the instruction name and its argument respectively. Had we not used ~let*~, we'd have to use two nested ~let~ expressions.
+Speaking of /alists/, we can now formalize the ~let~ macro signature. It takes an alist as first argument, defining the variables and their initial values, and binds them to the scope of the other arguments which will be evaluated iteratively. Note that the variables defined in the alist will not be available outside the ~let~ form.
+
+We then iterate over the list of instructions using ~while~ macro until the program counter, incremented at each iteration, grows larger than the length of the instruction list. As you can witness, ~while~ takes a condition as first argument, and loop over all other arguments making up the while body. We use a special variant of ~let~ to parse the currently executed bytecode instruction: ~let*~. The difference with the former is subtle: without the ~*~, we cannot have the variables refer to each other sequentially in the first argument for ~let~ (the definitions). Here however, we get the element from the instruction list pointed to by the program counter (with ~(nth (alist-get 'pc registers) instructions)~) and then use this value to declare the variables ~key~ and ~value~ which correspond to the instruction name and its argument respectively. Had we not used ~let*~, we'd have to use two nested ~let~ expressions.
 
 Finally, we do case matching on the instruction name, execute it, and increment the program counter.
 
-At this point, you've probably wondered why are there quotes sprinkled all over our lisp code, and it's time to understand this syntax. As you can see, our Lisp code consists of nested expressions of the form ~(exp-name exp-arg-1 exp-arg-2 ... exp-arg-n)~ that will /evaluate/ and return other expressions. There are rules to the evaluations of expressions and in particular, when evaluating a function, all its arguments are evaluated first, and then passed to the function body for further use. The quote symbol we've been using is actually a lisp shorthand (hard coded in the elisp reader but usually implemented as a "reader macro", which elisp does not support if my memory does not fail me) for the ~quote~ macro, therefore ~'some-exp == (quote (some-exp))~. Unlike functions, macros do not evaluate their arguments when executing allowing them to be used to *manipulate* code, we'll dive into macros shortly. But sometimes, you want to pass un-evaluated arguments to a function, and in this case /quote/ the argument. This is what is been done when declaring a ~cons~ cell in the above snippet, and when calling ~alist-get~ for getting an alist's entry for a specific register. In both cases ~pc~ needs to be quoted as it is not available in the scope (either as a function, variable, macro or whatever) and hence would throw. By quoting it we actually pass the /symbol/, ~pc~, to ~cons~ and ~alist-get~ by quoting it with ~'pc~. Think of it this way: if we are not evaluating a variable that is not defined, then there is no problem, we just associate it a symbol and pass that symbol around :) Last but not least, this means that the quote can be used to get a list. Indeed, evaluating ~(1 2 3)~ will look for a function or macro called ~1~ and evaluate it with arguments ~2~ and ~3~; whereas ~'(1 2 3)~ (or equivalently, ~(quote (1 2 3))~) will return a /list/ with elements ~1~, ~2~, and ~3~. It may seem complex at first, and quiet frankly, I haven't completely grasped it myself (please help me out if I'm wrong ;)), but you'll get it as we start coding some more!
+At this point, you've probably wondered why are there quotes sprinkled all over our lisp code, and it's time to understand this syntax. As you can see, our Lisp code consists of nested expressions of the form ~(exp-name exp-arg-1 exp-arg-2 ... exp-arg-n)~ that will /evaluate/ and return other expressions. There are rules to the evaluations of expressions and in particular, when evaluating a function, all its arguments are evaluated first, and then passed to the function body for further use. The quote symbol we've been using is actually a lisp shorthand [1] for the ~quote~ macro, therefore ~'some-exp~ /expands to/ ~(quote (some-exp))~. Note the word "expands", which is the term used to describe the /transformation/ done by a macro. Unlike functions, macros do not evaluate their arguments when executing allowing them to be used to *manipulate* code, we'll actually implement our own macro shortly. Sometimes however, you want to pass un-evaluated arguments to a function, and in this case /quote/ the argument. This is what is been done when declaring a ~cons~ cell in the above snippet, and when calling ~alist-get~ for getting an alist's entry for a specific key. In both cases ~pc~ needs to be quoted as it is not available in the scope (either as a function, variable, macro or whatever) and hence would throw. By quoting it we actually pass the /symbol/, ~pc~, to ~cons~ and ~alist-get~ by quoting it with ~'pc~. Think of it this way: if we are not evaluating a variable that is not defined, then there is no problem, we just associate it a symbol and pass that symbol around :) Last but not least, this means that the quote can be used to get a list. Indeed, evaluating ~(1 2 3)~ will look for a function or macro called ~1~ and evaluate it with arguments ~2~ and ~3~; whereas ~'(1 2 3)~ (or equivalently, ~(quote (1 2 3))~) will return a /list/ with elements ~1~, ~2~, and ~3~. It may seem complex at first, and quiet frankly, I haven't completely grasped it myself (please help me out if I'm wrong, all help is welcomed ;)), but you'll get it as we start coding some more!
 
-Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//push stack val)~ and assign its result back to ~stack~ with ~setq~ which allows to modify a variable that was defined in a ~let~ or ~let*~ block. As you can see, pushing onto a list is very easy in elisp, we simply make use of the default ~push~ macro.
+[1] I believe the quote symbol is hard coded in the Elisp reader but is usually implemented as a "reader macro", which Elisp does not support if my memory does not fail me.
+
+Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//push stack val)~ and assign its result back to ~stack~ with ~setq~ which allows to modify a variable available in the current scope. As you can see, pushing onto a list is very easy in elisp, we simply make use of the default ~push~ macro.
 
 #+begin_src emacs-lisp :session code
 (defun vm//push (stack val)
@@ -174,7 +196,9 @@ Let's now go over the ~PUSH~ instruction. We call it from ~vm//main~ with ~(vm//
 #+RESULTS:
 : vm//push
 
-Now, the ~ADD~ instruction. Since ~SUB~, ~MUL~ and ~DIV~ work similarly, we have factored the logic into a function ~vm//op~ which we call by passing the lisp functions ~+~, ~-~ , ~*~ and ~/~. What this function does is that it pops two elements off the stack and applies the function passed as the first argument to them and pushes the result back on the stack. We apply arguments to a function using ~funcall~:
+The ~vm//push~ function simply takes a stack and a value to push as argument, and returns the resulting stack.
+
+Now, the ~ADD~ instruction. Since ~SUB~, ~MUL~ and ~DIV~ work similarly, we have factored the logic into a function ~vm//op~ which we call by passing the lisp functions ~+~, ~-~ , ~*~ and ~/~ to. Remember what the ~ADD~ instruction does, ~vm//op~ /generalizes/ it: it pops two elements off the stack and applies the function passed as the first argument to them and pushes the result back on the stack. We apply arguments to a function /dynamically/ using ~funcall~:
 
 #+begin_src emacs-lisp :session code
 (defun vm//op (stack op)
@@ -184,9 +208,11 @@ Now, the ~ADD~ instruction. Since ~SUB~, ~MUL~ and ~DIV~ work similarly, we have
 #+RESULTS:
 : vm//op
 
-The ~ADD~ instruction is then implemented as ~(vm//op stack '+)~ where we pass the ~+~ function symbol by quoting it, preventing its execution, as a second argument.
+Notice that ~funcall~ is itself a function and that its arguments will be evaluated first. This allows us to pass ~(pop stack)~ as ~funcall~ arguments and be sure to the resulting stack is what will be operated on.
 
-The ~vm//increment-pc~ function increments by a value passed as argument the ~pc~ register. Setting the ~pc~ is a bit tricky: we want to set the second element of the key-value pair corresponding to ~pc~ in the registers alist. We do this using ~setcdr~ on ~(assq 'pc registers)~ with ~val~. Concretely, a con's (tuple of length two) ~car~ and ~cdr~ are it's first and second element respectively. We can modify the con's second element by calling ~setcdr~ on it. Here what we're trying to do is find the cons corresponding to the program counter in the ~registers~ alist, and set its ~cdr~ to the new value. We can get a pointer to this cons using ~assq~ which takes a key, ~'pc~, as first argument to look into the alist provided by the second argument, ~registers~.
+The ~ADD~ instruction is then implemented as ~(vm//op stack '+)~, where we pass the ~+~ function symbol as a second argument by quoting it thus preventing its evaluation. One could loosely view the quote symbol as a /function pointer/ in this particular case.
+
+The ~vm//increment-pc~ function increments the ~pc~ register by a value passed as argument. Setting the ~pc~ is a bit tricky: we want to set the second element of the key-value pair corresponding to ~pc~ in the ~registers alist~. We do this using ~setcdr~ on ~(assq 'pc registers)~ with ~val~. Concretely, a /con/'s  ~car~ and ~cdr~ are it's first and second element respectively. We can modify the con's second element by calling ~setcdr~ on it. Here what we're trying to do is find the cons corresponding to the program counter in the ~registers~ alist, and set its ~cdr~ to a new value. We can get a /pointer/ to this cons using ~assq~ which takes a /key/, ~'pc~, as first argument to look into the /alist/ provided by the second argument, ~registers~. The function ~set-pc~ takes the registers and a new program counter value as argument, and returns the mutated registers alist:
 
 #+begin_src emacs-lisp :session code
 (defun vm//set-pc (registers val)
@@ -225,7 +251,7 @@ As you can see, we have the correct output of 30 and our final program counter v
 Now that we've learned how Brainfuck works and have our small VM working, we can start compiling a first set of Brainfuck instructions to our bytecode. We'll need to make some modifications to our VM: add a heap and a heap pointer since that's how brainfuck works. Then, we'll be able to easily compile the ~+~, ~-~ , ~<~ and ~>~ instructions. The important takeaway here is that we now have two registers, one to track which instruction we are currently executing and another to identify where in the heap we are currently located at. We'll also need to add instructions to mutate the heap or else it would be of no use.
 
 ** VM modifications
-    
+
 We'll add on top of our VM's stack and registers, some RAM used as our heap and initialized as a list of zeros using ~make-list~. We'll also add the ~READ_RAM~ and ~WRITE_RAM~ instructions to interact with the VM's RAM. Finally, we need three new registers: ~eax~, ~ebx~ and ~ecx~ which essentially gives our VM three global variables. ~eax~ and ~ebx~ will be used by some VM instructions such as ~WRITE_RAM~ which reads the value to write in ~ebx~ and the location to write to in ~eax~. We could implement ~WRITE_RAM~ only on the stack by popping the two top stack entries and acting upon them, but I have chosen to implement them as registers not only to mimic the way system calls work on Linux but also and mostly because it's fun. Moreover, our compiler will use the ~ecx~ register to store the heap pointer since we need to store it somewhere.
 
 *Note:* An other way to implement the heap pointer would be by implementing a stack pointer that would allow us to move around the stack. We could then store the heap pointer (and any other variables) by pushing it on the stack and recovering it at any time by moving the stack pointer back to the variable location. This is how variables can be implemented on a compiler for the Tezos blockchain virtual machine which allows moving the /instruction pointer/ (/i.e./ the stack pointer) around with the ~DIP~ and ~IIP~ instructions ("decrement instruction pointer" and "increment instruction pointer"). We'll actually be implementing the VM's jump instruction to allow compiling loops shortly, but for now we're sticking to registers ;)
@@ -274,7 +300,7 @@ We then write to the ram address by reading from the register ~eax~ the address 
  list--->| alpha | *----->| beta | *--->| gamma | nil |
          +-------+---+    +------+---+  +-------+-----+
               ^              ^     ^               ^
-              |              |     |               |        
+              |              |     |               |
           con cell 1        car   cdr           list end
 
 #+end_src
@@ -313,7 +339,7 @@ We can now add these new instructions to our virtual machine:
 #+begin_src emacs-lisp :session code
 (defun vm//main (instructions &optional log)
   (let ((stack '())
-        (registers (list 
+        (registers (list
                     (cons 'eax  0)
                     (cons 'ebx  0)
                     (cons 'ecx  0)   ; heap pointer
@@ -398,14 +424,14 @@ We now define our compiler's main body, ~compiler//compile~, that takes some cod
   "Compiles a Brainfuck code string."
   (let ((tokens (lexer//lex code))  ; Lex the code
         (instructions  ; bytecode start with our init code
-         (compiler//init-code instructions))  
+         (compiler//init-code instructions))
         (current-pos 0))  ; we start at the first token
     ; We iterate on the tokens
     (while (< current-pos (length tokens))
       ; We parse the token
       (let ((el (nth current-pos tokens)))
         (if (equal el ">")
-            ; Call the appropriate function and update the 
+            ; Call the appropriate function and update the
             ; instructions with the result
             (setq instructions (compiler//increment-pc instructions 1)))
         (if (equal el "<")
@@ -525,11 +551,11 @@ As expected, the heap state we get is ~(1 1 3 0 ... 0)~ meaning that we have pro
 
 
 * Part IV: Adding Brainfuck loops to our compiler
-   
+
 We'll now implement the Brainfuck's looping mechanism. This feature is crucial as without it, Brainfuck would not be a Turing complete language.
 
 ** VM modifications
-    
+
 We'll need to implement /jumps/ and /conditional statements/ in our VM. Indeed, Brainfuck's looping mechanism, introduced in Part I, requires to /jump/ back to the beginning of the loop block /only if/ the heap value at the location the heap pointer points to is not zero when the current iteration began. We'll implement the jump as a /relative/ jump simply by incrementing or decrementing the program counter.
 
 The /if/ statement is a bit trickier: if the top stack entry is 0 (~False~), then increment the program counter by one additional unit which, added to the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by /two/. If the top stack entry differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
@@ -551,7 +577,7 @@ We can now add the ~IF~ and ~RJUMP~ instructions on our VM. ~RJUMP~'s implementa
 #+begin_src emacs-lisp :session code
 (defun vm//main (instructions &optional log)
   (let ((stack '())
-        (registers (list 
+        (registers (list
                     (cons 'eax  0)
                     (cons 'ebx  0)
                     (cons 'ecx  0)   ; heap pointer
@@ -603,7 +629,7 @@ Let's test these new instructions. We'll try both /if/ cases to demonstrate how 
 |        20 |           |           |          |   |   |   |   |   |   |
 | (eax . 0) | (ebx . 0) | (ecx . 0) | (pc . 6) |   |   |   |   |   |   |
 |         0 |         0 |         0 |        0 | 0 | 0 | 0 | 0 | 0 | 0 |
- 
+
 Testing with a True condition, we now do not skip over the ~("PUSH" 10)~ instruction leading to a stack equal to ~(20 10)~ as expected.
 
 #+begin_src emacs-lisp :session code :exports both
@@ -619,7 +645,7 @@ Testing with a True condition, we now do not skip over the ~("PUSH" 10)~ instruc
 |        20 |        10 |           |          |   |   |   |   |   |   |
 | (eax . 0) | (ebx . 0) | (ecx . 0) | (pc . 6) |   |   |   |   |   |   |
 |         0 |         0 |         0 |        0 | 0 | 0 | 0 | 0 | 0 | 0 |
- 
+
 ** Compiling
 
 We have now reached what I found being the roughest part of this project, implementing Brainfuck's looping mechanism. Not that it's particularly hard, it isn't really, but it was, I found, somewhat harder than what we've been working on so far. We'll go through it in order by first implementing the ~[~ token which begins the loop, we'll then end the loop with ~]~ and tight it all up by enhancing our ~compiler//compile~ function. We'll of course need to implement a little ~find-matching-char~ helper which will allow us to jump back to the beginning of the loop :D
@@ -645,7 +671,7 @@ otherwise, jump over the else instruction to the loop body."
 
   ; Test if it is different from 0
   (push-instruction '("IF"))
-  ; If it is not, increment by 1 
+  ; If it is not, increment by 1
   (push-instruction '("RJUMP" 1))
   ; Otherwise jump to the end of the loop
   (push-instruction `("RJUMP" ,(+ 1 jump-length)))
@@ -726,7 +752,7 @@ We use these to extract the tokens making up the loop, called ~middle-instructin
 : compiler//loop
 
 The modification to ~compiler//compile~ is trivial, we add a test case for ~[~, get the looping instructions, and set the compiler's current token position to the loop's end, ~]~:
- 
+
 #+begin_src emacs-lisp :session code
 (defun compiler//compile (code include-init-code)
   "Compiles a brainfuck code string. If this function is called
@@ -776,7 +802,7 @@ It works! Onto ~.~ !!
 * Part V: Adding the Brainfuck stdout instruction, ~.~
 
 ** VM modifications
-   
+
 We'll need to add a variable to our ~vm//main~ function that can store ~stdout~, we'll initialize it as the empty string. The instruction ~APPEND_STDOUT~ will allow us to push, character by character, to this stdout string:
 
 #+begin_src emacs-lisp :session code
@@ -870,7 +896,7 @@ We can now start compiling the ~.~ Brainfuck instruction and conclude this artic
 : compiler//append-stdout
 
 We can now add the test case for the ~.~ token and call ~compiler//append-stdout~:
-  
+
 #+begin_src emacs-lisp :session code
 (defun compiler//compile (code include-init-code)
   "Compiles a brainfuck code string. If this function is called
