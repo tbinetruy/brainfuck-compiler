@@ -1,15 +1,31 @@
-#+TITLE: Learning LISP by making a Brainfuck compiler
+#+TITLE: Learn Emacs Lisp By making a Brainfuck compiler
 #+Author: Thomas Binétruy
 #+INCLUDE: "print/doctype-memo.org"
-{{{subtitle(Equisafe)}}}
+{{{subtitle(Lisp tutorial)}}}
 {{{date(July 2018)}}}
 {{{theme-color(19cba9)}}}
 
-Most of the time, hackers at Yourlabs work on useful stuff. Today however, I was bored and decided to lisp a bit by making what is probably the most useless program ever: a brainfuck compiler targeting a custom virtual machine. We'll first look into Brainfuck, how it works, and how it can be used to write small programs. We then develop a small virtual machine and a Brainfuck compiler targeting it.
+* Introduction
+
+A good developer friend of mine, once asked me if I could teach him some Lisp. I've been using Emacs for half a decade and have learned some Lisp along the way by extending it in various ways. Since he's an experienced developer, I figured I could try to teach him the little Lisp I knew by making a small stack based virtual machine. We then decided to keep going and tried write a Brainfuck compiler targeting our newly implemented VM. We got a good kick out of it and I wanted to share this experience with other developers wanting to learn a combination of Lisp, bytecode, and Brainfuck. This Lisp tutorial is therefore somewhat different from the more typical ones in that we're going to learn the language by coding in it, during which I'll explain the various concepts surrounding the language as we encounter them. By the end of this tutorial, we'll have learned some Lisp, implemented a small compiler targeting a custom made VM, and of course, Brainfuck. Sadly, you will not be a Lisp-guru by the end of this article. My hope however, is that you will be independent enough in Lisp to be mostly using Emacs Lisp's documentation from there. Please do not hesitate to look some of the concepts introduced in this article that you have trouble grasping, maybe because I could have done a better job explaining them, on Stack overflow as you go through this tutorial. Indeed, some of these concepts need to be played with to get a /feel/ for them and you'll therefore need more practice than is provided in this article. Luckily, this tutorial does not implement any compiler optimization, you could therefore decide to implement some obvious ones after finishing this article.
+
+That being said, there are two ways we could proceed in this project: 
+
+1. Design and implement a virtual machine first before getting started with the compiler,
+2. Restrict ourselves to a subset of Brainfuck, design a VM allowing for a compiler targeting it to compile this subset, and iterate until we have implemented all of Brainfuck's syntax.
+
+The later option allows us to design the VM's bytecode instructions as we need them, and implementing baby steps by baby steps the compiler, so it's the option I have opted for in this tutorial. This also allows us, as we are also learning lisp, to grow two programs in parallel and therefore, defer having to deal with large lisp programs until later.
+
+This article is structured into Parts, with a Brainfuck tutorial opening as Part I so we understand what we have to deal with. As you will attest, it's a fun little language! Part II will get us started Lisping by implementing the VM's boilerplate. We'll introduce quite a few Lisp concepts as we walk through our code. Part III, IV, and V will be each divided into two sub-parts. The first one dealing with the necessary VM modifications such as adding bytecode instructions. The second will address the compiler modifications necessary for translating the currently studied Bainfuck syntax subset to the newly enhanced bytecode.
+
+Finally, we will close this tutorial with Part VI by making a small Emacs /major mode/ for Brainfuck providing syntax highlight along with a REPL. This will allow us to play a bit with Emacs' API.
+
+Let's get started :)
+
 
 * Part I: Introduction to Brainfuck
    
-Let us first understand what Brainfuck is about. The basic idea is that we have a heap at out disposal, represented as a list of integers, and a pointer to an entry in the list. We can navigate this heap in Brainfuck by moving the pointer around it by incrementing or decrementing it. Finally, we can output to ~stdout~ the heap entry that is currently being pointed to by converting it to its associated ASCII character. Before introducing the looping mechanism offered by Brainfuck, let us go over the syntax for the concepts we have just discussed:
+Let us first understand what Brainfuck is about. The basic idea is that we have a heap at out disposal, represented as a list of integers, and a pointer to an entry in that list. We can navigate this heap in Brainfuck by moving the pointer around it by incrementing or decrementing it. Finally, we can output to ~stdout~ the heap entry that is currently being pointed to by converting it to its associated ASCII character. Before introducing the looping mechanism offered by Brainfuck, let us first go over the syntax for the concepts we have just discussed:
 
 - ~<~: decrement the heap pointer
 - ~>~: increment the heap pointer
@@ -23,15 +39,21 @@ As an example, if we begin with a heap of length ten with each entries set to 0 
 +>++>+++
 #+end_src
 
-Let's compile this Brainfuck program and run it through our VM we will program in this article:
+Let's compile this Brainfuck program and run it through our VM we will program in this article. Let's first load the two files in this repo [1]:
 
-#+begin_src emacs-lisp :session tuto
+[1] https://github.com/tbinetruy/brainfuck-compiler
+
+#+begin_src emacs-lisp :session tuto :exports both
 (load-file "./vm.el")
 (load-file "./bf-compiler.el")
 #+end_src
 
 #+RESULTS:
 : t
+
+Nice, our first Lisping ! We can see that the imports worked since the result printed by the Elisp (Emacs Lisp) REPL(Elisp interpreter) is ~t~, which stands for the *true* boolean. Let's look at the code now. On the first line, we've loaded the ~vm.el~ file from our current directory's into the REPL by calling the function ~load-file~. Notice how we're calling the function, with the following syntax: ~(function-name arg1 arg2 ...)~. We infer from the above snippet that ~load-file~ takes as argument a string representing the path of the file to load. Notice also that the ~.el~ extension is the standard extension for elisp files.
+
+Let's proceed by compiling our Brainfuck code with the function ~compiler//compile~ and run the output through the VM with ~vm//main~:
 
 #+begin_src emacs-lisp :exports both :session tuto
 (setq src "+>++>+++")
@@ -41,7 +63,11 @@ Let's compile this Brainfuck program and run it through our VM we will program i
 #+RESULTS:
 | (1 2 3 0 0 0 0 0 0 0) |
    
-As we can see, the heap's end state is indeed a list of zeros with the three first elements set to the first three natural numbers.
+As we can see in the code's output just above, the heap's end state is indeed a list of zeros with the three first elements set to the first three natural numbers. Notice that we've defined a variable ~src~ with the Elisp /macro/ ~setq~ taking the variable name as a first argument and its value as a second argument. We've also just mentioned the word "macro", let's dive into what this means briefly because it's one of the biggest selling points used when discussing lisps. For now, we'll simply define it as a function that first /rewrites/ its arguments and then runs the transformation's output. Here, we don't really care how ~setq~ rewrites its arguments, we just know (thanks to Elisp's documentation) what it does. In this case, it rewrites them such that we have a variable ~src~ defined and now accessible from the current scope. Don't worry too much about macros for now, we'll discuss them in greater detail as we go through this tutorial and in particular, when we implement our own. However, I wanted to introduce them since we just encountered one in the pretty name of ~setq~.
+
+The second line in the above snippet runs nested functions. And interestingly, we will see that we can do this because, unlike macros, functions evaluates their arguments before evaluating their bodies [1]. Here, we can see that ~vm//main~ takes a single argument, which is the output of the ~compiler//compile~ function applied to the ~src~ variable.
+
+[1] Indeed, macros do *not* evaluate their arguments before running their body. That's exactly why they can *operate* on their arguments, and /transform/ them allowing for some very powerful meta-programming. In ~vm//main~ however, we /want/ to evaluate the call to ~compiler//compile~ and pass this result as argument before running the VM.
 
 Let us now introduce Brainfuck's looping mechanism. We surround a number of instructions to iterate over with ~[~ and ~]~, the loop will execute the instruction block until the value pointed to by the heap pointer equals zero when beginning the next iteration. The following snippet implements an addition, in this case ~3 + 3~, by making use of a simple loop:
 
@@ -52,11 +78,11 @@ Let us now introduce Brainfuck's looping mechanism. We surround a number of inst
 #+RESULTS:
 | (0 6 0 0 0 0 0 0 0 0) |
 
-We get the correct result by initiating the heap to ~(3 3 0 ...)~ before the loop start, then subtract one from the first heap entry and add it to the second until the first entry vanishes. As an exercise, you could modify our addition function to have the result in the first heap entry rather than the second ;)
+We get the correct result by initiating the heap to ~(3 3 0 ...)~ before the loop start, then subtracting unity from the first heap entry and adding it to the second until the first entry vanishes. As an exercise, you could modify our addition function to have the result in the first heap entry rather than the second ;)
 
 ** Hello World
 
-Let us now conclude this Brainfuck tutorial by making a Hello World program. In this first snippet, we increment the first heap entry until 32 in order to "cache" the space character which we'll need later. We then increment the heap pointer and start printing characters to ~stdout~ by incrementing or decrementing the current heap entry with ~+~ or ~-~ and printing it with ~.~. We therefore start with 72 plus signs corresponding to the letter 'H'. We then decrement by 3 and output 'E' /etc/. Once at the end of "HELLO", we decrement the heap pointer and output the space character we needed. We increment back the heap pointer and continue outputting "WORLD". We could have used a single heap entry to output our words, but reserving the first entry for special chars and the second for letters saves us from having to decrement from 79 ('O') to 32 (' ') back to 87 ('W'). It's also funner :)
+Let us now conclude this Brainfuck tutorial by making a /Hello World/ program. In this first snippet, we increment the first heap entry until 32 in order to "cache" the space character which we'll need later. We then increment the heap pointer and start printing characters to ~stdout~ by incrementing or decrementing the current heap entry with ~+~ or ~-~ and outputting it to stdout with ~.~. We therefore start with 72 plus signs corresponding to the letter 'H'. We then decrement by 3 and output 'E' /etc/. Once at the end of "HELLO", we decrement the heap pointer and output the space character we needed. We increment back the heap pointer and continue outputting "WORLD". We could have used a single heap entry to output our words, but reserving the first entry for special chars and the second for letters saves us from having to decrement from 79 ('O') to 32 (' ') back to 87 ('W'). It's also funner :)
 
 #+begin_src emacs-lisp :exports both :session tuto
 (vm//main (compiler//compile "++++++++++++++++++++++++++++++++>++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.---.+++++++..+++.<.>++++++++.--------.+++.------.--------." t))
@@ -65,7 +91,9 @@ Let us now conclude this Brainfuck tutorial by making a Hello World program. In 
 #+RESULTS:
 | HELLO WORLD | (32 68 0 0 0 0 0 0 0 0) |
 
-Bellow is a different hello world that I found on the Wikipedia entry. Notice that it is both shorter and more complex than the previous example. In particular, it uses more memory but uses loops to save up on ~+~ and ~-~ signs. So mysterious:
+In the result above, the standard output produced by running the Hello World program is shown in the left box, and the heap end state in the right one.
+
+Bellow is a different hello world that I found on the English Wikipedia entry for Brainfuck. Notice that it is both shorter and more complex than the previous example. In particular, it uses uses loops and a little more memory to save up on ~+~ and ~-~ signs. So mysterious:
 
 #+begin_src emacs-lisp :exports both :session tuto
 (setq src "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.")
@@ -198,18 +226,18 @@ Now that we've learned how Brainfuck works and have our small VM working, we can
 
 ** VM modifications
     
-We'll add on top of our VM's stack and registers, some RAM used as our head and initialized as a list of zeros using ~make-list~. We'll also add the ~READ_RAM~ and ~WRITE_RAM~ instructions to interact with the VM's RAM. Finally, we need three new registers: ~eax~, ~ebx~ and ~ecx~ which essentially gives our VM three global variables. ~eax~ and ~ebx~ will be used by some VM instructions such as ~WRITE_RAM~ which reads the value to write in ~ebx~ and the location to write to as ~eax~. We could implement ~WRITE_RAM~ only on the stack by popping the two top stack frames and acting upon them, but I have chosen to implement them as registers not only to mimic the way system calls work on Linux but also and mostly because it's fun. However, our compiler will use the ~ecx~ register to store the heap pointer since we need to store it somewhere.
+We'll add on top of our VM's stack and registers, some RAM used as our heap and initialized as a list of zeros using ~make-list~. We'll also add the ~READ_RAM~ and ~WRITE_RAM~ instructions to interact with the VM's RAM. Finally, we need three new registers: ~eax~, ~ebx~ and ~ecx~ which essentially gives our VM three global variables. ~eax~ and ~ebx~ will be used by some VM instructions such as ~WRITE_RAM~ which reads the value to write in ~ebx~ and the location to write to in ~eax~. We could implement ~WRITE_RAM~ only on the stack by popping the two top stack entries and acting upon them, but I have chosen to implement them as registers not only to mimic the way system calls work on Linux but also and mostly because it's fun. Moreover, our compiler will use the ~ecx~ register to store the heap pointer since we need to store it somewhere.
 
-An other way to implement the heap pointer would be by implementing a stack pointer that would allow us to move around the stack. We could then store the heap pointer (and any other variables) by pushing it on the stack and recovering it at any time by moving the stack pointer back to the variable location. This is how variables can be implemented on a compiler for the Tezos blockchain virtual machine which allows moving the /instruction pointer/ (/i.e./ the stack pointer) around with the ~DIP~ and ~IIP~ instructions ("decrement instruction pointer" and "increment instruction pointer").
+*Note:* An other way to implement the heap pointer would be by implementing a stack pointer that would allow us to move around the stack. We could then store the heap pointer (and any other variables) by pushing it on the stack and recovering it at any time by moving the stack pointer back to the variable location. This is how variables can be implemented on a compiler for the Tezos blockchain virtual machine which allows moving the /instruction pointer/ (/i.e./ the stack pointer) around with the ~DIP~ and ~IIP~ instructions ("decrement instruction pointer" and "increment instruction pointer"). We'll actually be implementing the VM's jump instruction to allow compiling loops shortly, but for now we're sticking to registers ;)
 
 # We also need two helpers to store and load a value from a register:
 
-We first define two helpers that will allow us to easily store and read a value from a register. Starting with ~vm//store~ which takes a stack and a registers alist as argument, we simply generalize the work we did in ~vm//set-pc~. We'll use the stack to store the register name and its value by pushing them onto it, and pop them in ~vm//store~ to set the appropriate ~registers~ alist entry as in ~vm//set-pc~:
+We first define two helpers that will allow us to easily store and read a value from a register. Starting with ~vm//store~ which takes a stack and a registers alist as argument, we simply generalize the work we did in ~vm//set-pc~. We'll use the stack to store the register name and its value by pushing them onto it, and popping them in ~vm//store~ to set the appropriate ~registers~ alist entry as in ~vm//set-pc~:
 
 #+begin_src emacs-lisp :session code
 (defun vm//store (stack registers)
-  "Stores the second to top stack frame into the register referred
-to by the top stack frame and pops these two value from the stack.
+  "Stores the second to top stack entry into the register referred
+to by the top stack entry and pops these two value from the stack.
 Ex: [S, new_val, register_name] -> [S]
     {R, register_name: old_val} -> {R, register_name: new_val}"
   (setcdr (assq (pop stack) registers) (pop stack))
@@ -218,12 +246,12 @@ Ex: [S, new_val, register_name] -> [S]
 
 In the above docstring, we introduce a convenient notation allowing us to formalize the stack and register mutations by the function. ~[S, new_val, register_name]~ means "some stack with n elements and the top two elements being ~new_val~ and ~register_name~". ~{R, register_name: old_val}~ means "a set of registers ~R~ with an additional register ~register_name~ and value ~old_val~". The arrow, ~->~ indicates the transition of stack or register states before and after the function evaluates.
 
-We should also also implement a function allowing us to ~load~ a register onto the stack. In the ~vm//load~ function bellow, we get the register name to retrieve by poping the stack, and we use ~cdr~ and ~assq~ to retrieve the associated register cons and getting its second entry (the register value):
+We should also implement a function allowing us to ~load~ a register onto the stack. In the ~vm//load~ function bellow, we get the register name to retrieve by popping the stack, and we use ~cdr~ and ~assq~ to retrieve the associated register cons and getting its second entry (the register value):
 
 #+begin_src emacs-lisp :session code
 (defun vm//load (stack registers)
   "Pushes the content of the register referred to by
-the top stack frame on the stack and pops the register
+the top stack entry on the stack and pops the register
 name.
 Ex: [S, register_name] -> [S, registers[register_name]]"
   (push (cdr (assq (pop stack) registers)) stack))
@@ -405,6 +433,16 @@ We'll now implement a helper to push new instructions to the list of instruction
 #+RESULTS:
 : push-instruction
 
+But what does this macro return? It transforms its argument ~instr~, which is a list, with the expression returned by the macro. It is this returned expression that will be executed by the macro caller. Hence, macros manipulate code before executing it allow for some very powerful meta-programming when needed. This is why macros do not evaluate their arguments, so you can manipulate them before hand. In particular, you can see that in Lisp's case, we can manipulate a program as data using macros. We call this property *homoiconicity* [1], which we quote some of the Wikipedia entry bellow:
+
+#+begin_quote
+A language is homoiconic if a program written in it can be manipulated as data using the language, and thus the program's internal representation can be inferred just by reading the program itself. For example, a Lisp program is written as a regular Lisp list, and can be manipulated by other Lisp code. In homoiconic languages, all code can be accessed and transformed as data, using the same representation. This property is often summarized by saying that the language treats "code as data". [1]
+#+end_quote
+
+[1] https://en.wikipedia.org/wiki/Homoiconicity
+
+Let us dig into ~push-instruction~ a little more so we really understand what is going on.
+
 Let us first investigate how to increment the program counter, stored in ~ecx~. We first push the register on the stack, load its value, add unity to it, and store it back to ~ecx~:
 
 #+begin_src emacs-lisp :session code
@@ -494,11 +532,11 @@ We'll now implement the Brainfuck's looping mechanism. This feature is crucial a
     
 We'll need to implement /jumps/ and /conditional statements/ in our VM. Indeed, Brainfuck's looping mechanism, introduced in Part I, requires to /jump/ back to the beginning of the loop block /only if/ the heap value at the location the heap pointer points to is not zero when the current iteration began. We'll implement the jump as a /relative/ jump simply by incrementing or decrementing the program counter.
 
-The /if/ statement is a bit trickier: if the top stack frame is 0 (~False~), then increment the program counter by one additional unit which, added to the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by /two/. If the top stack frame differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
+The /if/ statement is a bit trickier: if the top stack entry is 0 (~False~), then increment the program counter by one additional unit which, added to the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by /two/. If the top stack entry differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
 
 #+begin_src emacs-lisp :session code
 (defun vm//if (stack registers)
-  "Pops the top stack frame and increments the program counter by
+  "Pops the top stack entry and increments the program counter by
 unity if it is eqaul to 0, otherwise do nothing."
   (if (equal (pop stack) 0)
       (vm//increment-pc registers 1))
