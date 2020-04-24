@@ -16,14 +16,20 @@ That being said, there are two ways we could proceed in this project:
 
 The later option allows us to design the VM's bytecode instructions as we need them, and implementing baby steps by baby steps the compiler, so it's the option I have opted for in this tutorial. This also allows us, as we are also learning lisp, to grow two programs in parallel and therefore, defer having to deal with large lisp programs until later.
 
-This article is structured into Parts, with a Brainfuck tutorial opening as Part I so we understand what we have to deal with. As you will attest, it's a fun little language! Part II will get us started Lisping by implementing the VM's boilerplate. We'll introduce quite a few Lisp concepts as we walk through our code. Part III, IV, and V will be each divided into two sub-parts. The first one dealing with the necessary VM modifications such as adding bytecode instructions. The second will address the compiler modifications necessary for translating the currently studied Bainfuck syntax subset to the newly enhanced bytecode.
+This article is structured into Parts, with a Brainfuck tutorial opening as Part I so we understand what we have to deal with. As you will attest, it's a fun little language! We'll also get a little Elisp environment up and running, we'll be installing Emacs, but no need to have ever used it! Part II will get us started Lisping by implementing the VM's boilerplate. We'll introduce quite a few Lisp concepts as we walk through our code. Part III, IV, and V will be each divided into two sub-parts. The first one dealing with the necessary VM modifications such as adding bytecode instructions. The second will address the compiler modifications necessary for translating the currently studied Bainfuck syntax subset to the newly enhanced bytecode.
 
 Finally, we will close this tutorial with Part VI by making a small Emacs /major mode/ for Brainfuck providing syntax highlight along with a REPL. This will allow us to play a bit with Emacs' API.
 
 Let's get started :)
 
 
-* Part I: Introduction to Brainfuck
+* Part I: Getting started
+  
+In this Part, we'll first get our Elisp environment up and running, and then start experimenting with Brainfuck. The reason we do it in this order is simple: we'll be running some Elisp to get familiar with Brainfuck, and I'll use the occasion to introduce some of the Lisp concepts we'll be using. So we might as well have an Elisp environment going.
+
+** TODO Getting an Emacs Lisp environment running
+
+** An introduction to Brainfuck
 
 Let us first understand what Brainfuck is about. The basic idea is that we have a heap at out disposal, represented as a list of integers, and a pointer to an entry in that list. We can navigate this heap in Brainfuck by moving the pointer around it by incrementing or decrementing it. Finally, we can output to ~stdout~ the heap entry that is currently being pointed to by converting it to its associated ASCII character. Before introducing the looping mechanism offered by Brainfuck, let us first go over the syntax for the concepts we have just discussed:
 
@@ -80,7 +86,7 @@ Let us now introduce Brainfuck's looping mechanism. We surround a number of inst
 
 We get the correct result by initiating the heap to ~(3 3 0 ...)~ before the loop start, then subtracting unity from the first heap entry and adding it to the second until the first entry vanishes. As an exercise, you could modify our addition function to have the result in the first heap entry rather than the second ;)
 
-** Hello World
+*** Hello World
 
 Let us now conclude this Brainfuck tutorial by making a /Hello World/ program. In this first snippet, we increment the first heap entry until 32 in order to "cache" the space character which we'll need later. We then increment the heap pointer and start printing characters to ~stdout~ by incrementing or decrementing the current heap entry with ~+~ or ~-~ and outputting it to stdout with ~.~. We therefore start with 72 plus signs corresponding to the letter 'H'. We then decrement by 3 and output 'E' /etc/. Once at the end of "HELLO", we decrement the heap pointer and output the space character we needed. We increment back the heap pointer and continue outputting "WORLD". We could have used a single heap entry to output our words, but reserving the first entry for special chars and the second for letters saves us from having to decrement from 79 ('O') to 32 (' ') back to 87 ('W'). It's also funner :)
 
@@ -102,7 +108,7 @@ Bellow is a different hello world that I found on the English Wikipedia entry fo
 
 #+RESULTS:
 | Hello World! | (0 0 72 100 87 33 10 0 0 0) |
-
+   
 * Part II: virtual machine boilerplate
 
 Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about bytecode, and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble Assembly language in some ways.
@@ -955,3 +961,13 @@ Finally, we can compile the Hello World example taken from Wikipedia's Brainfuck
 #+RESULTS:
 | Hello World! |                                               |                             |
 | nil          | ((eax . 10) (ebx . 10) (ecx . 6) (pc . 1246)) | (0 0 72 100 87 33 10 0 0 0) |
+
+* TODO Part VI: Making an Emacs major mode for Brainfuck
+
+** Syntax coloring
+
+** The REPL
+
+* TODO Conclusion
+
+
