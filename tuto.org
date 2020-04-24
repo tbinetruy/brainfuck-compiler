@@ -559,13 +559,13 @@ As expected, the heap state we get is ~(1 1 3 0 ... 0)~ meaning that we have pro
 
 * Part IV: Adding Brainfuck loops to our compiler
 
-We'll now implement the Brainfuck's looping mechanism. This feature is crucial as without it, Brainfuck would not be a Turing complete language.
+We'll now implement the Brainfuck's looping mechanism. This feature is crucial as without it, Brainfuck would not be a Turing complete language. In order to introduce this feature, we need to add some bytecode instructions to our VM. In particular, we'll need to be able to jump around which instruction is currently being executed by mutating the VM's program counter. To do so, we'll add the /relative jump/ and /conditional/ instructions. We'll then be free to compile loops easily. Let's get started!
 
 ** VM modifications
 
-We'll need to implement /jumps/ and /conditional statements/ in our VM. Indeed, Brainfuck's looping mechanism, introduced in Part I, requires to /jump/ back to the beginning of the loop block /only if/ the heap value at the location the heap pointer points to is not zero when the current iteration began. We'll implement the jump as a /relative/ jump simply by incrementing or decrementing the program counter.
+We'll need to implement /jumps/ and /conditional statements/ in our VM. Indeed, Brainfuck's looping mechanism, introduced in Part I, requires to /jump/ back to the beginning of the loop block /only if/ the heap value at the location the heap pointer points to is not zero when the current iteration begins. We'll implement the jump as a /relative/ jump simply by incrementing or decrementing the program counter.
 
-The /if/ statement is a bit trickier: if the top stack entry is 0 (~False~), then increment the program counter by one additional unit which, added to the VM's incrementation of the program counter after executing each instruction, means that a ~False~ statement will actually increment the program counter by /two/. If the top stack entry differs from 0, then the VM does nothing and the program counter will only be incremented by unity.
+The /if/ statement is a bit trickier: if the top stack entry is 0 (~False~), then /increment/ the program counter by one additional unit. When added to the VM's incrementation of the program counter after executing each instruction, this means that a ~False~ statement will actually increment the program counter by /two/. If the top stack entry differs from 0, then the VM does nothing and the program counter will only be incremented by /unity/.
 
 #+begin_src emacs-lisp :session code
 (defun vm//if (stack registers)
