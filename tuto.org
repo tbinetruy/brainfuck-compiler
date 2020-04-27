@@ -1317,9 +1317,7 @@ Finally, we update the key map so that we can type ~C-c E~ to compile and evalua
    
 ** The REPL
    
-The last feature for our major mode will be a REPL.
-
-The goal is to get the following:
+The last feature for our major mode will be a REPL. What we'd like is be able to hit a shortcut and have a the current Emacs window be split in two with a Brainfuck REPL waiting to evaluate code. The goal is to get the following in this window:
 
 #+begin_src
 Welcome to the Brainfuck REPL 
@@ -1336,11 +1334,19 @@ HELLO WORLD
 =: 
 #+end_src
 
+Simply, the user has to enter some Brainfuck code after the ~=:~ sign and hit ~C-c C-c~ to have the result being printed on screen and a new prompt waiting for some new user input.
+
+How are we going to do this? We'll create a new major mode, ~bf-repl-mode~, that will make a buffer interactive. So we'll first split the current window, create a new buffer, and activate the ~bf-repl-mode~. This will insert some predetermined introductory text and insert ~=:~ inviting for the user to type something on the last line. Finally, we'll bind a function that runs the buffer last line through the compiler and VM and prints the output on a new line. We'll bind this function, ~bf-repl//insert-init-text~, to the shortcut ~C-c C-c~.
+
+Let's start with the function that inserts some introductory text in the current buffer. Very simple, we already know how to:
+
 #+begin_src emacs-lisp :session code
 (defun bf-repl//insert-init-text ()
   (interactive)
   (insert "Welcome to the Brainfuck REPL\n\nPress C-c C-c with the cursor on the last line to evaluate it.\n\n\n=: "))
 #+end_src
+
+Let's now write the function that evaluates the last line and inserts the result in the buffer. We get the current line content with ~(thing-at-point 'line t)~ and clean it up from the ~=:~ sign. We then get the result by compiling the source and running it through the VM. Finally, we insert the result and a new prompt ~=:~:
 
 #+begin_src emacs-lisp :session code
 (defun bf-repl//eval-line ()
@@ -1351,9 +1357,13 @@ HELLO WORLD
     (insert (concat "\n" (car result) "\n\n=: "))))
 #+end_src
 
+Again, we define an empty hook list for our new mode:
+
 #+begin_src emacs-lisp :session code
 (defvar bf-repl-mode-hook nil)
 #+end_src
+
+In our key map, we bind ~bf-repl//eval-line~ to ~C-c C-c~:
 
 #+begin_src emacs-lisp :session code
 (defvar bf-repl-mode-map nil "Keymap for BF REPL major mode")
@@ -1362,6 +1372,8 @@ HELLO WORLD
     (define-key map "\C-c\C-c" 'bf-repl//eval-line)
     map))
 #+end_src
+
+And hook it all up in ~bf-repl-mode~ as done in ~bf-mode~ previously:
 
 #+begin_src emacs-lisp :session code
 (defun bf-repl-mode ()
@@ -1374,8 +1386,23 @@ HELLO WORLD
   (setq major-mode 'bf-repl-mode)
   (setq mode-name "Brainfuck REPL")
   (run-hooks 'bf-repl-mode-hook)
-  (bf-repl//insert-init-text))
+  (bf-repl//insert-init-text))  ; We insert the init text
 #+end_src
+
+We now need to add a function to ~bf-mode~'s key map so that we can easily spawn a REPL. We use ~split-window-right~ and ~windmove-right~ to create a new window and move the cursor to it. We the create a new buffer named ~*Brainfuck REPL~, switch to it, and activate ~bf-repl-mode~:
+
+#+begin_src emacs-lisp :session code
+(defun bf-mode-start-repl ()
+  "Opens a window and instantiates a Brainfuck REPL in it."
+  (interactive)
+  (split-window-right)
+  (windmove-right)
+  (get-buffer-create "*Brainfuck REPL*")
+  (switch-to-buffer "*Brainfuck REPL*")
+  (bf-repl-mode))
+#+end_src
+
+Finally, we update ~bf-mode~'s key map to bind spawning a REPL to ~C-C r~:
 
 #+begin_src emacs-lisp :session code
 (setq bf-mode-map
