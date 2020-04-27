@@ -65,7 +65,17 @@ Now that Emacs is up and running, know that you can call any (public, or /intera
 
 Last but not least, as we will see, Lisp code necessitates a lot of parenthesis and can be rough to write and align by hand. The Lisp syntax being a tree, actually allow for Emacs to help you out writing and navigating Lisp code by operating on the tree. Just like Vim allows you to navigate text much simpler than by using arrows, the Emacs package ~smartparens~ [1] or ~paredit~ [2], allows one to navigate Lisp code semantically. Once you get used to it, you actually never have to write parenthesis ever again when writing and editing Lisp code. Check out on Emacsrocks [3] how the narrator uses ~paredit~ [3] to navigate Lisp code.
 
-In order to install these packages, you'll need to setup Emacs' community repository, MELPA [4] https://melpa.org/, which you can learn how to on Emacs' wiki [5]. Installing ~paredit~ is then as simple as typing ~M-x package-install RET paredit RET~.
+In order to install these packages, you'll need to setup Emacs' community repository, MELPA [4] https://melpa.org/, which you can learn how to on Emacs' wiki [5].
+
+#+begin_src emacs-lisp :session code
+(require 'package)
+
+(add-to-list 'package-archives
+             '("MELPA Stable" . "https://stable.melpa.org/packages/") t)
+(package-initialize)
+#+end_src
+
+Installing ~paredit~ is then as simple as typing ~M-x package-install RET paredit RET~.
 
 [1] https://github.com/Fuco1/smartparens
 [2] https://www.emacswiki.org/emacs/ParEdit
@@ -1007,10 +1017,375 @@ Finally, we can compile the Hello World example taken from Wikipedia's Brainfuck
 | nil          | ((eax . 10) (ebx . 10) (ecx . 6) (pc . 1246)) | (0 0 72 100 87 33 10 0 0 0) |
 
 * TODO Part VI: Making an Emacs major mode for Brainfuck
+  
+In this final Part, we'll be implementing a Bainfuck *major mode* for Emacs. As we shall see, each file opened in Emacs is attached to major mode governing its editing behavior and we'll go into more detail regarding what this means shortly. The important take-away is that this will allow us to get familiar with Emacs' API
+
+We'll first implement the syntax highlighting, which should be very easy since half a dozen characters make up Brainfuck's syntax. We'll then implement a function that will allow us to /expand/ Brainfuck that was written with a shorthand, which we'll define. This will demonstrate how to dynamically modify a /buffer/ in Elisp, a buffer being an abstraction for a file opened in Emacs. We'll then implement a /linter/ that'll let us know when Brainfuck loops, brackets, are unbalanced. Finally, we'll make a small Brainfuck REPL that will be binded to our major mode so we can instantiate it easily from any opened Brainfuck file.
+
+Let's get started :)
 
 ** Syntax coloring
 
+Let's first look into the mechanism Emacs uses to color text based on what it represents. If you open a Javascript file you'd expect it to be highlighted differently than for a Python file. When you open a file in Emacs, its content is loaded in an object called a /buffer/ to which is associated a /major mode/ defining its syntax, shortcuts that should be made available for that particular buffer, /etc/.
+
+Our strategy is simple: we'll define a minimal major mode for Brainfuck that colors each token differently. A major mode is composed among other things of a /keymap/, a /syntax table/, a keywords that can be highlighted. We'll go over them individually starting with the keyword highlighting.
+
+We'll first define a global variable with the macro ~defvar~ that takes the variable name as first argument, its initial value as second, and a documentation string as third. We then set this variable to its desired value which is a list of ~cons~, each taking a regex to match as first element, and a /font lock/ as second. The reason we first set the global variable ~bf-font-lock-keywords~ and then assign it a value is because ~defvar~ does not override if it has an initial value preventing package developers to easily reload the file currently worked on. See [1] for more details on this behavior.
+
+[1] http://ergoemacs.org/emacs/elisp_defvar_problem.html
+
+First, let's see how to assign a /face color/ to the Brainfuck token ~+~. We need to find a regex that will match the plus sign. The answer is ~"\\+"~.
+
+Notice the double backslash in our regex? Since the plus sign has meaning, we need to escape it with a backslash. But since the backslash is a special token in strings, used to itself escape characters, we need to escape it as well with itself. This we have a double backslash preceding the plus sign in our regex. We'll assign this token the font color that would normally be used for variables using ~font-lock-variable-name-face~. We go on similarly with other tokens leaving the loop related tokens, ~[~ and ~]~, so that they'll be the default color.
+
+#+begin_src emacs-lisp :session code
+(defvar bf-font-lock-keywords nil
+  "Default highlighting expressions for bf-mode")
+(setq bf-font-lock-keywords
+      (list
+       '("\\+" . font-lock-variable-name-face)
+       '("\\-" . font-lock-function-name-face)
+       '("\\." . font-lock-keyword-face)
+       '("<" . font-lock-doc-face)
+       '(">" . font-lock-constant-face)))
+#+end_src
+
+We also need a mode map, which assigns keys to particular commands for the given major mode. For now, we don't have any commands to bind, so we'll set it to a default keymap with the function ~make-keymap~:
+
+#+begin_src emacs-lisp :session code
+(defvar bf-mode-map nil "Keymap for BF major mode")
+(setq bf-mode-map (make-keymap))
+#+end_src
+
+Finally, let's introduce the syntax table for the major mode. First, the /syntax table/ is a data structure that assigns each character in the buffer with a class: punctuation, comment start, string delimiter, /etc/. We'll simply define comments by making a default table with ~make-syntax-table~ and modifying it with ~modify-syntax-entry~. We'll assign the ~#~ and ~\n~ (line break) characters to the comment start and end classes which are ~<~ and ~>~ respectively:
+
+#+begin_src emacs-lisp :session code
+(defvar bf-mode-syntax-table nil "Syntax table for bf-mode")
+(setq bf-mode-syntax-table
+      (let ((st (make-syntax-table)))
+        (modify-syntax-entry ?# "<" st)
+        (modify-syntax-entry ?\n ">" st)
+        st))
+#+end_src
+
+Notice the question marks before the characters to modify in the syntax table. In Elisp, it is the syntax for /characers/ rather than strings (between double quotes). As an example, ~"#"~ is a string of length 1, but ~?#~ is the character /sharp/. We can convert between the two type with the functions ~string-to-char~ and ~char-to-string~. Here however, the function ~modify-syntax-entry~ expects a character as first argument.
+
+Before defining our major mode, let's define a data structure holding code to run in ~bf-mode-hook~ that will be ran when the major mode is activated so we can modify the major mode externally. We'll define the global variable ~bf-mode-hook~ as ~nil~ for now:
+
+#+begin_src emacs-lisp :session code
+(defvar bf-mode-hook nil "Hooks for bf-mode")
+#+end_src
+   
+We can tie everything up us follows by defining a function ~bf-mode~. We'll make it ~interactive~ by calling the ~interactive~ macro inside the function. This will allow us to call this function from the Emacs UI by typing ~M-x bf-mode RET~. We'll first reset all the local variables for this buffer as explicitly mentioned in the documentation [1]. We then set the buffer's syntax table to ~bf-mode-syntax-table~ defined above using ~set-syntax-table~. Similarly, using ~use-local-map~ to set the buffer's keymap to the one we defined previously. We then create a local variable ~font-lock-defaults~ and assign it the value defined above. We then set the ~major-mode~ and ~mode-name~ global variables to ~bf-mode~ and ~Brainfuck~ respectively, and run the hooks with ~run-hooks~.
+
+[1] "The major mode command should start by calling kill-all-local-variables. This runs the normal hook change-major-mode-hook, then gets rid of the buffer-local variables of the major mode previously in effect", https://www.gnu.org/software/emacs/manual/html_node/elisp/Major-Mode-Conventions.html
+
+#+begin_src emacs-lisp :session code
+(defun bf-mode ()
+  "Major mode for editing Brainfuck files"
+  (interactive)
+  (kill-all-local-variables)
+  (set-syntax-table bf-mode-syntax-table)
+  (use-local-map bf-mode-map)
+  (set (make-local-variable 'font-lock-defaults) '(bf-font-lock-keywords))
+  (setq major-mode 'bf-mode)
+  (setq mode-name "Brainfuck")
+  (run-hooks 'bf-mode-hook))
+#+end_src
+
+Notice the use of ~set~ to update the font locks. This does the same as ~setq~, but is not a macro, meaning that it /evaluates/ its arguments before doing the assignment. In particular, the first argument is evaluated to the newly created local variable.
+
+Finally, we add files with the ~.bf~ extension to the associative list ~auto-mode-alist~ which assigns a file extension to a major mode and activates it automatically when opening files of this type. The extension match is done using a regex, we use the double backslash in front of the period to escape it since it is a regex special token.
+
+#+begin_src emacs-lisp :session code
+(add-to-list 'auto-mode-alist '("\\.bf" . bf-mode))
+#+end_src
+
+** Brainfuck shorthands
+
+Brainfuck is very hard to read and write. If one needs to write /n/ identical tokens, one needs to be very careful when typing. We'll use Emacs to help us out write Brainfuck "sanely". What we want to do is as follows: we want to be able to write ~5+~ instead of ~+++++~, and bind a function to some shortcut that will expand everywhere in the buffer where this shorthand is used. Of course, we want it to work with any /n/, not just 5, and with any tokens, not just ~+~.
+
+The strategy is as follows: we bring back the cursor to the beginning of the buffer and search forward with a regex matching ~n[+,-,<,>,.]~ for /n/ some natural number. We can do this with the following regex, ~"\\([0-9]+\\)\\([-\\|+\\|<\\|>\\|.]\\)"~. We use the regex parenthesis operators to separate the number and the token. We can then easily replace the match in the buffer with its expansion:
+
+#+begin_src emacs-lisp :session code
+(defun bf-mode-expand-buffer ()
+  (interactive)
+  (goto-char 0)
+  (while (re-search-forward "\\([0-9]+\\)\\([-\\|+\\|<\\|>\\|.]\\)" nil t)
+    (let* ((n-string (buffer-substring (match-beginning 0) (match-end 0)))
+           (n (string-to-number n-string))
+           (token-string (buffer-substring (match-end 1) (+ 1 (match-end 1))))
+           (token (string-to-char token-string)))
+      (replace-match (make-string n token)))))
+#+end_src
+
+First, we bring back the cursor to the beginning of the buffer with ~(goto-char 0)~, and the search the regex forward with a while loop. The ~while~ macro evaluates its argument before each iteration until it evaluates to false. It evaluates its second argument at each iteration. Here, we want to iterate until searching forward for the regex with ~re-search-forward~ evaluates falsely. In the loop body, we extract the matches from the buffer by using ~match-beginning~ and ~match-end~ with their group number (0 for the number, and 1 for the token). We then use ~replace-match~ to replace the match with the expansion using ~make-string~.
+
+We can now update our mode map by setting its global variable as follows to bind expanding the buffer to ~C-c e~:
+
+#+begin_src emacs-lisp :session code
+(setq bf-mode-map
+  (let ((map (make-keymap)))
+    (define-key map "\C-ce" 'bf-mode-expand-buffer)
+    map))
+#+end_src
+
+** Linting using Flycheck
+   
+Let's now add a basic linter for our major mode. We'll be using the very powerful Flycheck [1] which is an extensible on-the-fly syntax checker. What we want is to let the user know when the brackets are not matched. Indeed, a loop beginning requires a loop end and if the brackets are unbalanced, the compiler will throw.
+
+[1] https://www.flycheck.org/en/latest/
+
+We can install Flycheck from Melpa (See Part I) as follows:
+   
+#+begin_src
+M-x package-install RET flycheck RET
+#+end_src
+
+We first need to require the module before going on:
+
+#+begin_src emacs-lisp :session code
+(require 'flycheck)
+#+end_src
+
+We'll now implement a little helper that checks whether or not the brackets are balanced in the current buffer. Since we need to look through the entire buffer, we need to set the cursor to line 1 and column 1. We'd like to restore the cursor location to where it was before the search. We can do that using the ~save-excursion~ macro which will restore the cursor to where it was before calling the macro after evaluating it. The rest of the function is very easy, we scan a first time the buffer and count the occurrences of the character ~[~ and then do the same for ~]~ before comparing if both values match.
+
+#+begin_src emacs-lisp :session code
+(defun bf-mode-check-matching-brackets ()
+  "Count open and close brackets in the buffer
+saving the cursor location."
+  (let ((open-count 0)
+        (close-count 0))
+    (save-excursion
+      (goto-char 0)
+      (while (re-search-forward "\\[" nil t)
+        (setq open-count (1+ open-count)))
+      (goto-char 0)
+      (while (re-search-forward "\\]" nil t)
+        (setq close-count (1+ close-count))))
+
+    (not (equal open-count close-count))))
+#+end_src
+
+However, this implementation is terrible. First, it scans the buffer twice, and then accepts code where a closing bracket is written before an opening one. Try re-implementing the function using ~find-matching-char~ that we implemented above.
+
+Flycheck will take an Elisp function as a callback to evaluate automatically to lint the buffer, we'll call this function ~bf-mode-lint~. This function takes two arguments, the first one being the current Flycheck /checker/ user, and the second, a callback passed by Flycheck. This callback needs to be called inside ~bf-mode-lint~ dynamically with ~funcall~ as done previously with ~'finished~ as first argument to end the linting and the errors as second argument. In essence, ~bf-mode-lint~ evaluates ~bf-mode-check-matching-brackets~ and calls the Flycheck callback with a list of errors if it evaluates falsely. It calls the Flycheck callback with no errors otherwise.
+
+In the case where the brackets are not matched, saving the cursor position, we got to the beginning of the buffer, search for the first opening bracket, and return a list of a single Flycheck error with ~flycheck-error-new-at~ and the current line and column number as well as an error message:
+
+#+begin_src emacs-lisp :session code
+(defun bf-mode-lint (checker callback)
+  "Check if the counters match or not:
+If not: call the Flycheck callback with an error
+        at the first opening bracket in the buffer.
+Otherwise: call the Flycheck callback with no errors."
+  (interactive)
+  (if (bf-mode-check-matching-brackets)
+      (funcall callback
+               'finished
+               (save-excursion
+                 (goto-char 0)
+                 (re-search-forward "\\[" nil t)
+                 (list (flycheck-error-new-at
+                        (line-number-at-pos) (current-column) 'info
+                        "Unbalanced loop" :checker checker))))
+    (funcall callback 'finished nil)))
+#+end_src
+
+Finally, we define the Flycheck Brainfuck checker associating ~bf-mode-lint~ to our Brainfuck mode. The checker will be called ~brainfuck-checker~:
+   
+#+begin_src emacs-lisp :session code
+(flycheck-define-generic-checker 'brainfuck-checker
+  "A Brainfuck syntax checker."
+  :start 'bf-mode-lint
+  :modes 'bf-mode)
+#+end_src
+
+We can now add our newly defined checker to Flycheck's list of checkers, ~flycheck-checkers~:
+   
+#+begin_src emacs-lisp :session code
+(add-to-list 'flycheck-checkers 'brainfuck-checker)
+#+end_src
+
+Finally, we can turn on the Flycheck /minor mode/ with ~(flycheck-mode)~ inside ~bf-mode~ to have the linter turned on when turning the major mode on. Remember when we said earlier that each buffer has an associated major mode to it? In order to add extra functionality to major modes, each buffer can have multiple /minor modes/ associated with them. This is exactly what we are doing to get all of the Flycheck features associated with our buffer when turning on its minor mode on.
+   
+#+begin_src emacs-lisp :session code
+(defun bf-mode ()
+  "Major mode for editing Brainfuck files"
+  (interactive)
+  (kill-all-local-variables)
+  (set-syntax-table bf-mode-syntax-table)
+  (use-local-map bf-mode-map)
+  (set (make-local-variable 'font-lock-defaults) '(bf-font-lock-keywords))
+  (setq major-mode 'bf-mode)
+  (setq mode-name "Brainfuck")
+  (run-hooks 'bf-mode-hook)
+  (flycheck-mode))  ; Starting Flycheck minor mode automatically
+#+end_src
+
+** Documentation through Eldoc
+   
+Our quest to the perfect Brainfuck major mode continues with a nice feature of emacs, /Eldoc/. This package, integrated in Emacs by default, allows to navigate around the buffer, and emit to the /mini-buffer/ some string. Note that the /mini-buffer/ is the "echo-area" at the bottom of the Emacs window. For instance, we want that when the cursor is on the ~[~ token, that the mini-buffer reads "Starts a loop etc". We'll do so for each Brainfuck token.
+
+Eldoc simply takes a callback and prints to the mini-buffer its result when the cursor moves around the buffer. Our callback, ~bf-mode-eldoc-function~, will look at the current character under the cursor with ~(char-after)~ and case match it with each Brainfuck token. The appropriate documentation string is then returned by the function. Notice that we make use of a helper macro ~catch-token~ in the code to save up on ~if~ case.
+   
+#+begin_src emacs-lisp :session code
+(defun  bf-mode-eldoc-function ()
+  "Prints to documentation for Brainfuck tokens in the
+mini-buffer using Eldoc."
+  (let ((current-char (char-to-string (char-after)))
+        (return-value "")
+        (loop-start-doc "Starts a loop. If the heap value pointed too is zero, then end the loop.")
+        (loop-end-doc "Return to the beginning of the loop.")
+        (increment-heap-doc "Increment the heap value pointed to.")
+        (decrement-heap-doc "Decrement the heap value pointed to.")
+        (increment-heap-pointer-doc "Increment the heap pointer.")
+        (decrement-heap-pointer-doc "Decrement the heap pointer.")
+        (append-stdout-doc "Append the heap value pointed to to stdout."))
+    (defmacro catch-token (token doc)
+      `(if (equal current-char ,token)
+          (setq return-value ,doc)))
+    (catch-token "[" loop-start-doc)
+    (catch-token "]" loop-end-doc)
+    (catch-token "+" increment-heap-doc)
+    (catch-token "-" decrement-heap-doc)
+    (catch-token ">" increment-heap-pointer-doc)
+    (catch-token "<" decrement-heap-pointer-doc)
+    (catch-token "." append-stdout-doc)
+    return-value))
+#+end_src
+
+Finally, we modify the ~bf-mode~ function to create a local variable ~eldoc-documentation-function~ that Eldoc will then call:
+   
+#+begin_src emacs-lisp :session code
+(defun bf-mode ()
+  "Major mode for editing Brainfuck files"
+  (interactive)
+  (kill-all-local-variables)
+  (set-syntax-table bf-mode-syntax-table)
+  (use-local-map bf-mode-map)
+  (set (make-local-variable 'font-lock-defaults) '(bf-font-lock-keywords))
+  (setq major-mode 'bf-mode)
+  (setq mode-name "Brainfuck")
+  (run-hooks 'bf-mode-hook)
+  ; Setting the Eldoc callback for this buffer (locally)
+  (set (make-local-variable 'eldoc-documentation-function) 'bf-mode-eldoc-function)
+  (flycheck-mode))
+#+end_src
+
+** Evaluate the buffer
+   
+We now want to map to a shortcut to evaluate the buffer through our compiler and virtual machine pipeline, and output the result to the mini-buffer.
+
+We'll need to pre-process the buffer before sending it for compilation however. Remember that out compiler only lexes by separating tokens, and we've added comments. So we want to remove all line breaks, ~\n~, all spaces, and anything of the form ~# some text \n~. Of course, we'll also need to expand the Brainfuck shorthands with ~bf-mode-expand-buffer~ before compiling. Since our expansion function operates on a buffer, but that we do not want to change the user's buffer, we'll copy it in a /temporary one/. We can do so by copying the reference to the current buffer with ~(current-buffer~ into a variable ~orig-buf~. We then insert it in a temporary buffer with ~with-temp-buffer~ and ~insert-buffer-substring~. Only once in the temporary buffer do we expand and remove unnecessary characters and store the result in a variable called ~src~. Finally, we can compile ~src~ and run the result through our VM and store the result which consists of a list of length four containing the standard output, the stack, register, and heap states. We deconstruct the list and print the result to the mini-buffer with the function ~message~:
+
+#+begin_src emacs-lisp :session code
+(defun bf-mode-evaluate-buffer ()
+  "Compiles the current buffer and evaluates it.
+The result is echoed to the mini-buffer."
+  (interactive)
+  (let ((orig-buf (current-buffer)))
+    (with-temp-buffer
+      (insert-buffer-substring orig-buf)
+      (bf-mode-expand-buffer)
+      (let ((buffer (buffer-string))
+            (src "")
+            (result nil))
+        (setq src (replace-regexp-in-string
+                   " \\|\n\\|#.*\n"
+                   ""
+                   buffer))
+        (setq result (vm//main (compiler//compile src t)))
+        (message "stdout: %s \nstack: %s \nregisters: %s \nheap: %s"
+                 (car result)
+                 (cadr result)
+                 (caddr result)
+                 (cadddr result))))))
+#+end_src
+
+Note theses funny functions in the ~message~ call: ~cadr~, ~caddr~ and ~cadddr~. These are shortands for ~(car (cdr _))~, ~(car (cdr (cdr _)))~, ~(car (cdr (cdr (cdr _))))~, where ~_~ is some list. Hence, its yet another way to get the /nth/ element of a list which we did earlier with ~(nth some-index some-list)~.
+
+Finally, we update the key map so that we can type ~C-c E~ to compile and evaluate the buffer through the VM and print the result to the mini-buffer:
+
+#+begin_src emacs-lisp :session code
+(setq bf-mode-map
+  (let ((map (make-keymap)))
+    (define-key map "\C-ce" 'bf-mode-expand-buffer)
+    (define-key map "\C-cE" 'bf-mode-evaluate-buffer)
+    map))
+#+end_src
+   
 ** The REPL
+   
+The last feature for our major mode will be a REPL.
+
+The goal is to get the following:
+
+#+begin_src
+Welcome to the Brainfuck REPL 
+
+Press C-c C-c with the cursor on the last line to evaluate it.
+
+
+=: ++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.
+Hello World!
+
+=: ++++++++++++++++++++++++++++++++>++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++.---.+++++++..+++.<.>++++++++.--------.+++.------.--------.
+HELLO WORLD
+
+=: 
+#+end_src
+
+#+begin_src emacs-lisp :session code
+(defun bf-repl//insert-init-text ()
+  (interactive)
+  (insert "Welcome to the Brainfuck REPL\n\nPress C-c C-c with the cursor on the last line to evaluate it.\n\n\n=: "))
+#+end_src
+
+#+begin_src emacs-lisp :session code
+(defun bf-repl//eval-line ()
+  (interactive)
+  (let* ((line (thing-at-point 'line t))
+         (src (replace-regexp-in-string "=: " "" line))
+         (result (vm//main (compiler//compile src t))))
+    (insert (concat "\n" (car result) "\n\n=: "))))
+#+end_src
+
+#+begin_src emacs-lisp :session code
+(defvar bf-repl-mode-hook nil)
+#+end_src
+
+#+begin_src emacs-lisp :session code
+(defvar bf-repl-mode-map nil "Keymap for BF REPL major mode")
+(setq bf-repl-mode-map
+  (let ((map (make-keymap)))
+    (define-key map "\C-c\C-c" 'bf-repl//eval-line)
+    map))
+#+end_src
+
+#+begin_src emacs-lisp :session code
+(defun bf-repl-mode ()
+  "Major mode for a live Brainfuck REPL"
+  (interactive)
+  (kill-all-local-variables)
+  (set-syntax-table bf-mode-syntax-table)
+  (use-local-map bf-repl-mode-map)
+  (set (make-local-variable 'font-lock-defaults) '(bf-font-lock-keywords))
+  (setq major-mode 'bf-repl-mode)
+  (setq mode-name "Brainfuck REPL")
+  (run-hooks 'bf-repl-mode-hook)
+  (bf-repl//insert-init-text))
+#+end_src
+
+#+begin_src emacs-lisp :session code
+(setq bf-mode-map
+  (let ((map (make-keymap)))
+    (define-key map "\C-ce" 'bf-mode-expand-buffer)
+    (define-key map "\C-cE" 'bf-mode-evaluate-buffer)
+    (define-key map "\C-cr" 'bf-mode-start-repl)
+    map))
+#+end_src
+   
 
 * TODO Conclusion
 
