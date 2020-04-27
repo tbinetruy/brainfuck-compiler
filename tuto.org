@@ -1101,6 +1101,10 @@ Finally, we add files with the ~.bf~ extension to the associative list ~auto-mod
 (add-to-list 'auto-mode-alist '("\\.bf" . bf-mode))
 #+end_src
 
+Finally, opening a Brainfuck file looks pretty:
+
+[[./img/syntax-highlight.png]]
+
 ** Brainfuck shorthands
 
 Brainfuck is very hard to read and write. If one needs to write /n/ identical tokens, one needs to be very careful when typing. We'll use Emacs to help us out write Brainfuck "sanely". What we want to do is as follows: we want to be able to write ~5+~ instead of ~+++++~, and bind a function to some shortcut that will expand everywhere in the buffer where this shorthand is used. Of course, we want it to work with any /n/, not just 5, and with any tokens, not just ~+~.
@@ -1129,6 +1133,14 @@ We can now update our mode map by setting its global variable as follows to bind
     (define-key map "\C-ce" 'bf-mode-expand-buffer)
     map))
 #+end_src
+
+Let's try it out! That's our code before:
+
+[[./img/expand-before.png]]
+
+And that's what we get after:
+
+[[./img/expand-after.png]]
 
 ** Linting using Flycheck
    
@@ -1223,6 +1235,10 @@ Finally, we can turn on the Flycheck /minor mode/ with ~(flycheck-mode)~ inside 
   (flycheck-mode))  ; Starting Flycheck minor mode automatically
 #+end_src
 
+We can now try to unbalance some brackets to witness the popup and Flycheck error list that you can access with ~M-x flycheck-error-list~:
+
+[[./img/flycheck.png]]
+
 ** Documentation through Eldoc
    
 Our quest to the perfect Brainfuck major mode continues with a nice feature of emacs, /Eldoc/. This package, integrated in Emacs by default, allows to navigate around the buffer, and emit to the /mini-buffer/ some string. Note that the /mini-buffer/ is the "echo-area" at the bottom of the Emacs window. For instance, we want that when the cursor is on the ~[~ token, that the mini-buffer reads "Starts a loop etc". We'll do so for each Brainfuck token.
@@ -1273,6 +1289,10 @@ Finally, we modify the ~bf-mode~ function to create a local variable ~eldoc-docu
   (flycheck-mode))
 #+end_src
 
+We can now notice the token documentation in the mini-buffer:
+
+[[./img/eldoc.png]]
+
 ** Evaluate the buffer
    
 We now want to map to a shortcut to evaluate the buffer through our compiler and virtual machine pipeline, and output the result to the mini-buffer.
@@ -1314,6 +1334,10 @@ Finally, we update the key map so that we can type ~C-c E~ to compile and evalua
     (define-key map "\C-cE" 'bf-mode-evaluate-buffer)
     map))
 #+end_src
+
+As you can see, we can now evaluate the current buffer and get the result in the mini-buffer:
+
+[[./img/evaluate.png/]]
    
 ** The REPL
    
@@ -1412,8 +1436,12 @@ Finally, we update ~bf-mode~'s key map to bind spawning a REPL to ~C-C r~:
     (define-key map "\C-cr" 'bf-mode-start-repl)
     map))
 #+end_src
-   
 
-* TODO Conclusion
+Let's see if it works:
 
+[[./img/repl.png]]
+
+Our REPL looks good :)
+
+* Conclusion
 
