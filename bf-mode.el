@@ -33,7 +33,7 @@ The result is echoed to the mini-buffer."
             (src "")
             (result nil))
         (setq src (replace-regexp-in-string
-                   " \\|\n\\|/.*\\*"
+                   " \\|\n\\|#.*\n"
                    ""
                    buffer))
         (setq result (vm//main (compiler//compile src t)))
@@ -56,8 +56,8 @@ The result is echoed to the mini-buffer."
 (defvar bf-mode-syntax-table nil "Syntax table for bf-mode")
 (setq bf-mode-syntax-table
       (let ((st (make-syntax-table)))
-        (modify-syntax-entry ?/ "<" st)
-        (modify-syntax-entry ?* ">" st)
+        (modify-syntax-entry ?# "<" st)
+        (modify-syntax-entry ?\n ">" st)
         st))
 
 (defvar bf-font-lock-keywords nil
