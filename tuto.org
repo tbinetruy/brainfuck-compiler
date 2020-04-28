@@ -165,9 +165,11 @@ Bellow is a different hello world that I found on the English Wikipedia entry fo
    
 * Part II: virtual machine boilerplate
 
-Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about bytecode, and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble Assembly language in some ways.
+Our brainfuck compiler will target a virtual machine that we'll design in this section. It'll teach us a bit about /bytecode/ [1], and is a good exercise to learn a bit about Lisp and computers in general as our bytecode will resemble Assembly language in some ways.
 
-From an abstract point of view, our virtual machine will be a program that takes a /list of instructions/ that can operate on a /stack/ and a /heap/. We'll also implement /registers/ that can be used to store variables, such as the /program counter/ tracking which instruction is currently being executed by the VM.
+[1] https://en.wikipedia.org/wiki/Bytecode
+
+From an abstract point of view, our virtual machine will be a program that takes a /list of instructions/ (that we've been calling bytecode) that can operate on a /stack/ and a /heap/. We'll also implement /registers/ that can be used to store variables, such as the /program counter/ tracking which instruction is currently being executed by the VM. Ultimately, the goal will be to have instructions allowing us to translate Brainfuck code into a sequence of instructions outputting the desired result when ran through the VM. As we will see at the end of this document, what we'll be implementing is be very similar to Web Assembly and Python's bytecode among other VM instruction sets. So it's actually quite interesting :)
 
 Let's get Lisping! There are a few concepts to go over, but we will mostly learn about them as we code. The snippet bellow declares a function ~vm//main~, which takes a list of instructions as first argument and an optional ~log~ boolean which we'll use to see what is going on in our VM as it executes code. I've added a significant of comments to help you decipher what is going, and as you'll see, we've already gone over /most/ of the syntax.
 
@@ -1142,6 +1144,8 @@ And that's what we get after:
 
 [[./img/expand-after.png]]
 
+You could try to implement the inverse function to ~bf-mode-expand-buffer~. This would allow the user to toggle between both representations. Additionally, it would make for a very fun exercise!
+
 ** Linting using Flycheck
    
 Let's now add a basic linter for our major mode. We'll be using the very powerful Flycheck [1] which is an extensible on-the-fly syntax checker. What we want is to let the user know when the brackets are not matched. Indeed, a loop beginning requires a loop end and if the brackets are unbalanced, the compiler will throw.
@@ -1338,7 +1342,7 @@ Finally, we update the key map so that we can type ~C-c E~ to compile and evalua
 As you can see, we can now evaluate the current buffer and get the result in the mini-buffer:
 
 [[./img/evaluate.png/]]
-   
+
 ** The REPL
    
 The last feature for our major mode will be a REPL. What we'd like is be able to hit a shortcut and have a the current Emacs window be split in two with a Brainfuck REPL waiting to evaluate code. The goal is to get the following in this window:
