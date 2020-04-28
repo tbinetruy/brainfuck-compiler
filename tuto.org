@@ -1441,7 +1441,70 @@ Let's see if it works:
 
 [[./img/repl.png]]
 
-Our REPL looks good :)
+Our environment looks good :)
+
+Additionally, you could try and add a function in ~bf-mode~ that allows you to evaluate a selected region of code through the REPL. One way of doing that would be to copy the selected text and pasting it on the last line of the REPL buffer, that you can select with its name, and calling ~bf-repl//eval-line~ from Elisp.
 
 * Conclusion
 
+Thus we conclude this article. It's been much longer than I initially thought, and hopefully, you have now learned enough Elisp that you could learn any other Lisps (Common Lisp, Clojure, Racket /etc/) fairly easily and that you can hack Emacs when needed.
+
+Let's recapitulate what we have and haven't gone over in this article. Ideally, you started knowing little to nothing about Brainfuck, bytecode, Lisp or the Emacs API. We learned about each by progressively implementing a Brainfuck compiler targeting simple stack based VM before integrating it into a custom made Brainfuck major mode for Emacs. Which was not an easy task to say the least! What are the next steps from here? Well, you decide, but you could dive deeper into some of the elements we've discussed. For example, if you're interested in compilers, you could now try to compile a /small subset/ of C by first lexing it and then writing a compiler that targets our VM! Note that you'll need to modify the VM by adding instructions to move the /stack pointer/ around so you can push variables on the stack and retrieve them when needed. Try to compile the following for instance:
+
+#+begin_src c
+int a = 1;
+int b = 2;
+int c = a + b;
+#+end_src
+
+You are now definitely capable of writing an Elisp lexer and compiler targeting your modified VM with the help of the documentation.
+
+If you want to dig into some more into bytecodes, as said in Part II when introducing stack-based VMs, there are many out there. Let's look at some of the most common one starting with Web Assembly (WASM). Its /text format/ looks Lispy, and to some extend works like our stack machine. Here's some WASM format taken from [1] that you should read if you liked this article:
+
+[1] https://developer.mozilla.org/en-US/docs/WebAssembly/Understanding_the_text_format
+
+
+#+begin_src lisp
+(func $double (param $p i32)
+  local.get $p
+  local.get $p
+  i32.add)
+#+end_src
+
+This defines a function of one parameter ~p~ called ~double~. When called it pushes the parameter twice on the stack and returns their addition. Simple! Python also compiles to some bytecode! Let's look into it:
+
+#+begin_src python :results output
+import dis
+dis.dis('print("Hello, World!")')
+#+end_src
+
+#+RESULTS:
+: LOAD_NAME                0 (print)
+: LOAD_CONST               0 ('Hello, World!')
+: CALL_FUNCTION            1
+: RETURN_VALUE
+
+As you can see, the call ~print("Hello, World!")~ uses the instructions ~LOAD_NAME~, ~LOAD_CONST~, ~CALL_FUNCTION~, and ~RETURN_VALUE~. Now you know what goes into these ~.pyc~ files! Elisp files also bytecompile to the Elisp VM that Emacs runs, its those ~.elc~ files you'll sometimes see. Finally, let's also introduce ~Michelson~, the Tezos VM bytecode [1] that is typed so you can statically type check it! Michelson implements the ~SWAP~ and ~DUP~ instructions that allow to swap elements on the stack and duplicating them.
+
+[1] https://tezos.gitlab.io/whitedoc/michelson.html
+
+So you could look into these various bytecodes and try to implement some of their features. To my knowledge, none of them implement a register mechanism, we just implemented them because real processors implement them and so I wanted to learn how they might work. In our case, it really is a redundant mechanism to pass arguments to our instructions and could (should ?) be removed. But it was fun to implement and compile with nonetheless!
+
+Let's also note the fact that we have completely over looked unit testing of our code. I suggest looking into ERT, the ELisp Regression Testing library [1], that is included in Emacs for those more serious about developing Emacs packages. I use this opportunity to mention the fact that we have not created an Emacs' package, and that those interested can look into here [2].
+
+[1] https://www.gnu.org/software/emacs/manual/html_node/ert/index.html
+[2] https://www.gnu.org/software/emacs/manual/html_node/elisp/Simple-Packages.html
+
+Finally, I would like to suggest some resources I used a lot when developing this tutorial, namely:
+
+- The Elisp documentation: https://www.gnu.org/software/emacs/manual/elisp.html
+- The Emacs Wiki: https://www.emacswiki.org/
+- Ergo Emacs: http://ergoemacs.org/emacs/emacs.html
+- The many Stackoverflow and Github issues I've skimmed through to find some answers I was looking for
+
+I hope you've enjoyed this article, thank you for reading it, and see you next time ;)
+
+
+Cheers!
+
+Thomas Binétruy
