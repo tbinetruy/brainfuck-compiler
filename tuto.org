@@ -29,7 +29,7 @@ In this Part, we'll first get our Elisp environment up and running, and then sta
 
 ** Getting an Emacs Lisp environment running
 
-Nothing too complicated in this sub-part, we'll be installing a fresh emacs, cloning the compiler we'll be coding's repo so we can experiment with brainfuck in the next sub-part, and we'll be creating a new Elisp file. If you've already used emacs, you scan safely skip to the next sub-part.
+We'll get started by getting an Elisp environment up and running. We'll be installing a fresh emacs, cloning the repo of the compiler we'll be coding so we can experiment with Brainfuck in the next sub-part, and we'll be creating and evaluating a new Elisp file. Finally, we'll introduce some basic Emacs functionalities so we can code sane, and recommend some packages to install to make your life easier. If you've already used Emacs, you scan safely skip to the next sub-part.
 
 Installing Emacs is easy, it should be along the line of:
 
@@ -39,6 +39,9 @@ pacman -Syu emacs
 
 # ubuntu
 apt install emacs
+
+# alpine
+apk add emacs
 
 # MacOS
 brew install emacs
@@ -50,18 +53,47 @@ choco install emacs
 We can now clone the repo containing the Brainfuck compiler and VM we'll be coding, we'll see how to use them in the next sub-part:
 
 #+begin_src bash
-get clone git@github.com:tbinetruy/brainfuck-compiler.git
+git clone git@github.com:tbinetruy/brainfuck-compiler.git
 cd brainfuck-compiler
 #+end_src
 
 We can now start up emacs in the freshly downloaded repository, appending ~-nw~ to start it in console mode if preferred:
 
 #+begin_src bash
-emacs  # windowed
+emacs      # windowed
 emacs -nw  # terminal mode
 #+end_src
 
-Now that Emacs is up and running, know that you can call any (public, or /interactive/ more precisely) functions by pressing ~M-x~ where ~M~ is the Meta key (usually ~alt~). We can create a new file with the command ~M-x find-file~, ~M-x~ will trigger a input at the bottom left of the Emacs window, where you can type in ~find-file~ and press Enter. There, you'll be able to enter a new Elisp file name, for example ~new.el~, and press the Enter key. Finally, press ~M-x save-buffer~ to write the file to disk. From there, you can call ~M-x eval-buffer~ to evaluate the buffer.
+Now that Emacs is up and running, know that you can call any (public, or /interactive/ more precisely) functions by pressing ~M-x~ where ~M~ is the Meta key (usually ~alt~). We can create a new file with the command ~M-x find-file~, ~M-x~ [1] will trigger a input at the bottom left of the Emacs window, where you can type in ~find-file~ and press Enter. There, you'll be able to enter a new Elisp file name, for example ~new.el~, and press the Enter key. Finally, press ~M-x save-buffer~ to write the file to disk (you'll get a notification at the bottom left of the Emacs window). From there, you can call ~M-x eval-buffer~ to evaluate the buffer.
+
+[1] https://www.gnu.org/software/emacs/manual/html_node/emacs/M_002dx.html
+
+Evaluating the buffer loads the current Elisp buffer into the Emacs environment. In ~new.el~, enter the following. We'll see what this does in Part II, for now let's just make sure that you environment is up and working:
+
+#+begin_src emacs-lisp
+(defun some-func ()
+  (print "hello"))
+#+end_src
+
+This defines a function that takes no arguments and prints out "hello". Evaluate the buffer with ~M-x eval-buffer~, split the window with ~M-x split-window-right~, move to the new window with ~M-x windmove-right~, and start the Elisp REPL with ~M-x ielm~. Now, typing ~(some-func)~ in the REPL and hit Enter to evaluate it. This should output "hello" in the REPL, everything works :)
+
+Note that you can hit TAB when calling emacs functions with ~M-x~ as well as in the Elisp REPL (ielm). Some of the ~M-x~ calls we've made are binded to shortcuts, as described in ~M-x describe-bidings~:
+
+- ~C-x C-s~ for ~save-buffer~ which saves the current file,
+- ~C-x C-c~ for ~save-buffers-kill-terminal~ which saves all opened files and quits Emacs,
+- ~C-x C-3~ for ~split-window-right~ which splits the current window vertically,
+- ~C-x o~ for ~other-window~ which cycles the cursor through windows,
+- ~C-x C-f~ for ~find-file~ which opens a new file.
+
+By default, windmove is not binded to any shortcuts. If you want to between windows with SHIFT plus an arrow key (~S-<left>~, ~S-<right>~, ~S-<up>~, ~S-<down>~), then you need to evaluate ~(windmove-default-keybindings)~ as instructed in [1]. To do so, here are a few possibilities:
+
+[1] https://emacs.stackexchange.com/questions/3458/how-to-switch-between-windows-quickly
+
+1. Create a file ~.emacs~ in your home, write ~(windmove-default-keybindings)~ in it, save the file, and restart Emacs. Emacs reads ~~/.emacs~ when it starts meaning that you can write whatever Elisp you want in it to configure your Emacs.
+2. You could also write ~(windmove-default-keybindings)~ in ~new.el~ and evaluate the buffer. You don't need to save the file but you'll need to do that every time you start Emacs.
+3. Finally, you can press ~M-:~ [1], which prompts you for some Elisp at the bottom left of the Emacs window. There, enter ~(windmove-default-keybindings)~ and hit ENTER, this will have evaluated the expression in the Emacs environment. As with ~2.~, you'll need to do this every time you start Emacs.
+
+[1] https://www.gnu.org/software/emacs/manual/html_node/emacs/Lisp-Eval.html
 
 Last but not least, as we will see, Lisp code necessitates a lot of parenthesis and can be rough to write and align by hand. The Lisp syntax being a tree, actually allow for Emacs to help you out writing and navigating Lisp code by operating on the tree. Just like Vim allows you to navigate text much simpler than by using arrows, the Emacs package ~smartparens~ [1] or ~paredit~ [2], allows one to navigate Lisp code semantically. Once you get used to it, you actually never have to write parenthesis ever again when writing and editing Lisp code. Check out on Emacsrocks [3] how the narrator uses ~paredit~ [3] to navigate Lisp code.
 
@@ -75,13 +107,18 @@ In order to install these packages, you'll need to setup Emacs' community reposi
 (package-initialize)
 #+end_src
 
-Installing ~paredit~ is then as simple as typing ~M-x package-install RET paredit RET~.
+Installing ~paredit~ is then as simple as typing ~M-x package-install RET paredit RET~ (where ~RET~ is the Return key). Similarly, might want to install ~which-key~ [6] by entering ~M-x package-install RET which-key RET~, as this will show keyboard shortcuts available as you start typing them. You'll need to activate Which Key by either entering ~M-x which-key-mode~, ~M-: (which-key-mode)~, or adding ~(which-key-mode)~ in your ~.emacs~ file. Then, when you'll hit the /prefix key/ [8] ~C-x~, Emacs will show at the bottom of the screen what shortcuts to hit to call an Emacs function. In the case of ~C-x~, which key will show you that if you hit ~2~ you will evaluate ~split-window-bellow~ [7].
 
 [1] https://github.com/Fuco1/smartparens
 [2] https://www.emacswiki.org/emacs/ParEdit
 [3] http://emacsrocks.com/e14.html
 [4] https://melpa.org/
 [5] https://www.emacswiki.org/emacs/MELPA
+[6] https://github.com/justbur/emacs-which-key
+[7] https://github.com/justbur/emacs-which-key/blob/master/img/which-key-bottom.png
+[8] https://www.gnu.org/software/emacs/manual/html_node/elisp/Prefix-Keys.html
+
+Now that we have a working Emacs environment to lisp in, let's first go over Brainfuck's syntax.
 
 ** An introduction to Brainfuck
 
