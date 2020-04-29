@@ -109,14 +109,14 @@ In order to install these packages, you'll need to setup Emacs' community reposi
 
 Installing ~paredit~ is then as simple as typing ~M-x package-install RET paredit RET~ (where ~RET~ is the Return key). Similarly, might want to install ~which-key~ [6] by entering ~M-x package-install RET which-key RET~, as this will show keyboard shortcuts available as you start typing them. You'll need to activate Which Key by either entering ~M-x which-key-mode~, ~M-: (which-key-mode)~, or adding ~(which-key-mode)~ in your ~.emacs~ file. Then, when you'll hit the /prefix key/ [8] ~C-x~, Emacs will show at the bottom of the screen what shortcuts to hit to call an Emacs function. In the case of ~C-x~, which key will show you that if you hit ~2~ you will evaluate ~split-window-bellow~ [7].
 
-[1] https://github.com/Fuco1/smartparens
-[2] https://www.emacswiki.org/emacs/ParEdit
-[3] http://emacsrocks.com/e14.html
-[4] https://melpa.org/
-[5] https://www.emacswiki.org/emacs/MELPA
-[6] https://github.com/justbur/emacs-which-key
-[7] https://github.com/justbur/emacs-which-key/blob/master/img/which-key-bottom.png
-[8] https://www.gnu.org/software/emacs/manual/html_node/elisp/Prefix-Keys.html
+- [1] https://github.com/Fuco1/smartparens
+- [2] https://www.emacswiki.org/emacs/ParEdit
+- [3] http://emacsrocks.com/e14.html
+- [4] https://melpa.org/
+- [5] https://www.emacswiki.org/emacs/MELPA
+- [6] https://github.com/justbur/emacs-which-key
+- [7] https://github.com/justbur/emacs-which-key/blob/master/img/which-key-bottom.png
+- [8] https://www.gnu.org/software/emacs/manual/html_node/elisp/Prefix-Keys.html
 
 Now that we have a working Emacs environment to lisp in, let's first go over Brainfuck's syntax.
 
@@ -162,9 +162,9 @@ Let's proceed by compiling our Brainfuck code with the function ~compiler//compi
 
 As we can see in the code's output just above, the heap's end state is indeed a list of zeros with the three first elements set to the first three natural numbers. Notice that we've defined a variable ~src~ with the Elisp /macro/ ~setq~ taking the variable name as a first argument and its value as a second argument. We've also just mentioned the word "macro", let's dive into what this means briefly because it's one of the biggest selling points used when discussing lisps. For now, we'll simply define it as a function that first /rewrites/ its arguments and then runs the transformation's output. Here, we don't really care how ~setq~ rewrites its arguments, we just know (thanks to Elisp's documentation) what it does. In this case, it rewrites them such that we have a variable ~src~ defined and now accessible from the current scope. Don't worry too much about macros for now, we'll discuss them in greater detail as we go through this tutorial and in particular, when we implement our own. However, I wanted to introduce them since we just encountered one in the pretty name of ~setq~.
 
-The second line in the above snippet runs nested functions. And interestingly, we will see that we can do this because, unlike macros, functions evaluates their arguments before evaluating their bodies [1]. Here, we can see that ~vm//main~ takes a single argument, which is the output of the ~compiler//compile~ function applied to the ~src~ variable.
+The second line in the above snippet runs nested functions. And interestingly, we will see that we can do this because, unlike macros, functions evaluates their arguments before evaluating their bodies [*]. Here, we can see that ~vm//main~ takes a single argument, which is the output of the ~compiler//compile~ function applied to the ~src~ variable.
 
-[1] Indeed, macros do *not* evaluate their arguments before running their body. That's exactly why they can *operate* on their arguments, and /transform/ them allowing for some very powerful meta-programming. In ~vm//main~ however, we /want/ to evaluate the call to ~compiler//compile~ and pass this result as argument before running the VM.
+[*] Indeed, macros do *not* evaluate their arguments before running their body. That's exactly why they can *operate* on their arguments, and /transform/ them allowing for some very powerful meta-programming. In ~vm//main~ however, we /want/ to evaluate the call to ~compiler//compile~ and pass this result as argument before running the VM.
 
 Let us now introduce Brainfuck's looping mechanism. We surround a number of instructions to iterate over with ~[~ and ~]~, the loop will execute the instruction block until the value pointed to by the heap pointer equals zero when beginning the next iteration. The following snippet implements an addition, in this case ~3 + 3~, by making use of a simple loop:
 
@@ -1055,7 +1055,7 @@ Finally, we can compile the Hello World example taken from Wikipedia's Brainfuck
 | Hello World! |                                               |                             |
 | nil          | ((eax . 10) (ebx . 10) (ecx . 6) (pc . 1246)) | (0 0 72 100 87 33 10 0 0 0) |
 
-* TODO Part VI: Making an Emacs major mode for Brainfuck
+* Part VI: Making an Emacs major mode for Brainfuck
   
 In this final Part, we'll be implementing a Bainfuck *major mode* for Emacs. As we shall see, each file opened in Emacs is attached to major mode governing its editing behavior and we'll go into more detail regarding what this means shortly. The important take-away is that this will allow us to get familiar with Emacs' API
 
@@ -1533,8 +1533,8 @@ So you could look into these various bytecodes and try to implement some of thei
 
 Let's also note the fact that we have completely over looked unit testing of our code. I suggest looking into ERT, the ELisp Regression Testing library [1], that is included in Emacs for those more serious about developing Emacs packages. I use this opportunity to mention the fact that we have not created an Emacs' package, and that those interested can look into here [2].
 
-[1] https://www.gnu.org/software/emacs/manual/html_node/ert/index.html
-[2] https://www.gnu.org/software/emacs/manual/html_node/elisp/Simple-Packages.html
+- [1] https://www.gnu.org/software/emacs/manual/html_node/ert/index.html
+- [2] https://www.gnu.org/software/emacs/manual/html_node/elisp/Simple-Packages.html
 
 Finally, I would like to suggest some resources I used a lot when developing this tutorial, namely:
 
